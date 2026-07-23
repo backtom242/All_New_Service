@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SCENT SERVICE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet"/>
+<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#E3EAEA;font-family:'Noto Sans KR',sans-serif;-webkit-font-smoothing:antialiased;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const APP_PW="7895";
+const NAVREF={back:()=>{}}; // 전역 뒤로가기 핸들러 (App에서 주입)
+// 그리기용 펜 모양 커서 (핫스팟: 펜 끝)
+const PEN_CURSOR="url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 21l1-4L15 6l3 3L7 20z' fill='%23FFC94D' stroke='%23222' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M15 6l2-2 3 3-2 2z' fill='%232E90F1' stroke='%23222' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E\") 2 22, crosshair";
+// 설문 문항 (Survey / SurveyDoc 공용)
+const SURVEY_QS=[["향기 만족도","현재 사용 중인 향기에 만족하시나요?"],
+["향기 만족도","향기가 브랜드 또는 공간의 이미지와 잘 어울린다고 생각하십니까?"],
+["발향 품질","향의 강도가 적절하며, 공간 내 향이 균일하게 느껴진다고 생각하시나요?"],
+["서비스 품질","서비스 담당자의 응대 태도에 얼마나 만족하시나요?"],
+["서비스 품질","문제 발생 시, 대응 속도에 얼마나 만족하시나요?"],
+["사업 효과","향기 서비스가 고객 또는 직원의 공간 만족도 향상에 도움이 된다고 생각하십니까?"],
+["사업 효과","향기 서비스가 브랜드 이미지 구축에 도움이 되고 있다고 생각하시나요?"],
+["종합 평가","향기 서비스를 다른 사업장 또는 지인에게 추천할 의향이 있으신가요?"]];
+// [신규] 공간 향기 경험 설문 (내방 고객용)
+const SCENT_QS=[
+{q:"이 공간의 향기는 얼마나 인상 깊게 느껴지셨나요?",opts:["전혀 느끼지 못했다","거의 느끼지 못했다","어느 정도 느껴졌다","인상 깊게 느껴졌다","매우 인상 깊었다"]},
+{q:"향기가 이 공간의 분위기를 더욱 특별하게 만들어 주었다고 생각하시나요?",opts:["전혀 아니다","아니다","보통이다","그렇다","매우 그렇다"]},
+{q:"향기로 인해 이 공간이 더 기억에 남는다고 느끼셨나요?",opts:["전혀 아니다","아니다","보통이다","그렇다","매우 그렇다"]},
+{q:"비슷한 공간이라면, 향기가 좋은 곳을 다시 찾고 싶으신가요?",opts:["전혀 아니다","아니다","보통이다","그렇다","매우 그렇다"]},
+{q:"이 공간의 향기를 집이나 일상에서도 경험할 수 있다면 어떠신가요?",opts:["전혀 관심 없다","관심 없다","한 번쯤 사용해 보고 싶다","구매 의향이 있다","꼭 사용해 보고 싶다"]},
+{q:"이 공간의 향기를 가족이나 지인에게 추천하고 싶으신가요?",opts:["전혀 아니다","아니다","보통이다","그렇다","매우 그렇다"]}];
+const SCENT_FORMS=["디퓨저","룸스프레이","차량용 방향제","캔들","섬유향수","향수"];
+// 거래처(고객사) 대상 공간 향기 서비스 경험 설문
+const BIZ_QS=[
+{q:"현재 운영 중인 공간 향기 서비스에 얼마나 만족하시나요?",opts:["개선이 많이 필요하다","일부 개선되면 좋겠다","적절한 수준이다","전반적으로 만족스럽다","기대 이상의 효과를 경험하고 있다"]},
+{q:"공간 향기가 고객 경험과 공간 분위기 향상에 도움이 되고 있다고 느끼시나요?",opts:["체감하기 어려운 편이다","일부 도움이 되는 것 같다","적절한 수준이다","전반적으로 만족스럽다","기대 이상의 효과를 경험하고 있다"]},
+{q:"공간 향기가 귀사의 브랜드 이미지 구축에 도움이 되고 있다고 느끼시나요?",opts:["체감하기 어려운 편이다","일부 도움이 되는 것 같다","적절한 수준이다","전반적으로 만족스럽다","기대 이상의 효과를 경험하고 있다"]},
+{q:"서비스 방문 및 관리(향료 교체, 점검 등)는 만족스럽게 이루어지고 있다고 생각하시나요?",opts:["개선되면 좋을 부분이 많다","일부 개선되면 좋겠다","적절한 수준이다","전반적으로 만족스럽다","매우 만족스럽게 운영되고 있다"]},
+{q:"앞으로도 공간 향기 서비스를 지속적으로 운영하고 싶으신가요?",opts:["현재로서는 필요성을 다시 검토해 보고 싶다","상황에 따라 검토가 필요하다","현재 수준을 유지할 예정이다","앞으로도 지속적으로 운영하고 싶다","확대 운영도 고려하고 싶다"]},
+{q:"현재 공간의 향기를 고객 경험에 활용할 수 있는 상품(디퓨저, 룸스프레이 등)으로 제작한다면 관심이 있으신가요?",opts:["현재는 필요성을 느끼지 못하고 있다","필요시 검토해 볼 수 있다","긍정적으로 제작을 검토하고 싶다","관심이 있으며 상담을 받아보고 싶다","실제 제작을 추진해 보고 싶다"]}];
+const BIZ_EX=["공간이 한층 고급스럽게 느껴졌습니다.","고객들이 향기에 대해 긍정적인 반응을 보입니다.","브랜드 이미지와 잘 어울립니다.","방문 고객의 만족도가 높아진 것 같습니다."];
+// [재추가] 구글 캘린더 연동 데모 : 담당자별 오늘 방문 거래처
+const CAL_TODAY={
+"김영업":[{c:"JW메리어트",t:"09:30",loc:"서울 강남구",sev:"중대"},{c:"롯데호텔 서울",t:"11:20",loc:"서울 중구"},{c:"신라스테이",t:"14:00",loc:"서울 마포구"},{c:"파라다이스시티",t:"16:30",loc:"인천 중구 영종도"}],
+"이서비스":[{c:"코트야드 판교",t:"10:00",loc:"경기 성남시"},{c:"노보텔 앰배서더",t:"15:00",loc:"서울 강남구"}],
+"박현장":[{c:"JW메리어트",t:"13:00",loc:"서울 강남구"}]};
+// 로그인 세션(데모): 실명
+const SESSION={name:"김영업"};
+// 설치 현황 저장소(고객사별) — 세션 유지
+const INSTALL_DATA={};
+// 운영 히스토리 저장소 (서방지 내부코멘트 · 히스토리 페이지 공용) — 세션 유지
+const OP_HISTORY=[];
+// 향료 출고량 산정 저장소 (향료 운영 데이터 저장 시 기기별 초당 소비량 수집)
+const SHIP_DB=[]; // {scent, device, perSec}
+const CB_REPORT={}; // 소비량 블록 → {dev, perSec} (블록 id 별)
+// 고객용 추출 저장소 (서방지 내부 → 서방지 일반) 고객사별
+const CUST_EXTRACT={}; // company → [{text}]
+// Scent Mapping 도면 저장소 (서방지 내부 → 일반 공유) key: company|index
+const MAP_STORE={}; // key → {bg,bgW,bgH,items,nums,lines}
+const MAP_COUNT={}; // company → 도면 수
+const VISIT_SNAP={}; // company → {purpose,visitDate,svcStaff,svcPhone}
+// 저장된 서방지 목록 (홈 히스토리 → 업체 검색용) company → {internal,general,date}
+const SAVED_VISITS={};
+// 히스토리 중요도 단계: 1=단순(초록) · 2=지속 케어(노랑) · 3=크리티컬(빨강)
+const HIST_LV={1:{sev:"단순",color:"#2FA99B",bg:"#E4F4F2",dot:"🟢"},2:{sev:"지속 케어",color:"#F5B301",bg:"#FEF6E0",dot:"🟡"},3:{sev:"크리티컬",color:"#E4572E",bg:"#FDECE6",dot:"🔴"}};
+const opUpsert=(e)=>{const i=OP_HISTORY.findIndex(x=>x.id===e.id);if(i>=0)OP_HISTORY[i]=e;else OP_HISTORY.unshift(e);};
+const opRemove=(id)=>{const i=OP_HISTORY.findIndex(x=>x.id===id);if(i>=0)OP_HISTORY.splice(i,1);};
+// 장비 시리얼 저장소 (설치현황 장비기록 + 시리얼 기록에서 자동 수집) — 세션 유지
+const SERIAL_DB={recs:[
+{client:"JW메리어트",deviceId:0,deviceType:"DB-20",serial:"DB20-2401-001"},
+{client:"JW메리어트",deviceId:0,deviceType:"DB-20",serial:"DB20-2401-002"},
+{client:"롯데호텔 서울",deviceId:0,deviceType:"Ecoscent R2T",serial:"ECR2T-2312-118"},
+{client:"신라스테이",deviceId:0,deviceType:"Aroslim 3G(B)",serial:"AS3GB-2402-044"},
+{client:"파라다이스시티",deviceId:0,deviceType:"Compod",serial:"CPD-2403-007"},
+{client:"파라다이스시티",deviceId:1,deviceType:"DB-20",serial:"DB20-2403-051"},
+{client:"코트야드 판교",deviceId:0,deviceType:"Aroscent(W)",serial:"ASCW-2401-233"}]};
+const addOneMonth=(s)=>{const d=s?new Date(s):new Date();if(isNaN(d))return "";d.setMonth(d.getMonth()+1);return d.toISOString().slice(0,10);};
+const DEVICES=["DB-20","Compod","Aroslim 2G(B)","Aroslim 2G(S)","Aroslim 3G(B)","Aroslim 3G(S)","Aroscent(W)","Aroscent(B)","Ecoscent R1","Ecoscent R2","Ecoscent R1T","Ecoscent R2T","디퓨저","디지털 타이머(신)","디지털 타이머(구)","직접 입력"];
+const PARTNERS=["JW메리어트","롯데호텔 서울","신라스테이","파라다이스시티","코트야드 판교"];
+// 앱에 등록된 고객사(거래처) — 캘린더 고객사명과 일치할 때만 방문일지 연동 가능
+const APP_CLIENTS=PARTNERS;
+// 담당자 즐겨찾기(주요 거래처) — 기본 주요 거래처는 활성(노란 별)으로 시작
+const FAV={set:new Set(PARTNERS)};
+const SCENTS=["시그니처 우디","파이트 플로럴","화이트 머스크","시트러스 그린","직접 입력"];
+const PUMP=["하","중하","중","중상","상"];
+// 직원(로그인 / 서비스 담당자 자동입력) 데모 데이터
+const STAFF=[{id:"A",name:"김영업",phone:"010-1000-0001"},{id:"B",name:"이서비스",phone:"010-1000-0002"},{id:"C",name:"박현장",phone:"010-1000-0003"}];
+const LOGGED_IN=STAFF[0]; // 데모: 로그인한 직원
+// [추가] 항목별 변경 이력 데모
+const LOGS={
+customer:{title:"고객사 변경 이력",rows:[{date:"2026.01.10",text:"상호 변경: (주)메리어트 → JW메리어트"},{date:"2025.06.02",text:"신규 거래처 등록"}]},
+fg:{title:"FG 영업담당자 변경 이력",rows:[{date:"2026.05.01",text:"담당자 변경: 홍길동 → 김영업"},{date:"2025.06.02",text:"최초 배정: 홍길동"}]},
+scent:{title:"향기 변경 이력",rows:[{date:"2026.04.15",text:"향기 변경: 시트러스 그린 → 시그니처 우디"},{date:"2025.06.10",text:"최초 설치 향기: 시트러스 그린"}]},
+device:{title:"기기 변경 이력",rows:[{date:"2026.04.05",text:"기기 교체: Scent Pro 200 → Scent Pro 400 (파손 교체)"},{date:"2025.06.10",text:"최초 설치: Scent Pro 200 × 2대"}]}};
+// 컬러
+const C={blue:"#12B4A6",blueD:"#0E9488",blueL:"#E2F5F2",mint:"#57C7BB",mintD:"#2FA99B",mintL:"#E4F4F2",
+ink:"#12302C",sub:"#6E807D",line:"#E7ECEC",bg:"#F1F5F6",white:"#FFFFFF",red:"#E4572E",redL:"#FDECE6",
+yellow:"#F5B301",yellowL:"#FEF6E0",sky:"#3FC9C0",green:"#2FA99B",greenL:"#E4F4F2",dark:"#12302C",orange:"#E4572E",
+grad:"linear-gradient(135deg,#14B8A9 0%,#43D4C2 100%)"};
+const S={
+app:{display:"flex",justifyContent:"center",padding:"18px 0",minHeight:"100vh"},
+phone:{width:392,minHeight:850,background:C.white,borderRadius:40,boxShadow:"0 24px 60px rgba(18,48,44,0.20)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"},
+body:{flex:1,overflowY:"auto",padding:"16px 18px 92px"},
+top:{display:"flex",alignItems:"center",gap:8,padding:"46px 16px 12px",flexShrink:0},
+back:{background:"none",border:"none",fontSize:30,fontWeight:900,cursor:"pointer",color:C.ink,padding:"0 4px",lineHeight:1},
+h1:{fontSize:25,fontWeight:900,color:C.ink},
+tabbar:{display:"flex",gap:5,padding:"44px 9px 10px",flexShrink:0,alignItems:"center"},
+tab:(bg,fg)=>({background:bg,color:fg,border:"none",borderRadius:11,padding:"12px 2px",fontSize:11,fontWeight:800,cursor:"pointer",flex:"1 1 0",minWidth:0,textAlign:"center",whiteSpace:"nowrap",letterSpacing:"-0.4px",boxShadow:"0 5px 13px rgba(42,167,155,0.30)"}),
+navBtn:(grad,sh)=>({display:"inline-flex",alignItems:"center",gap:5,flex:"none",padding:"9px 13px",borderRadius:14,border:"1px solid rgba(255,255,255,0.5)",cursor:"pointer",fontSize:11,fontWeight:800,color:"#fff",background:grad,whiteSpace:"nowrap",letterSpacing:"-0.3px",boxShadow:`0 7px 16px ${sh}, inset 0 1px 0 rgba(255,255,255,0.35)`}),
+card:{background:C.white,border:`1px solid ${C.line}`,borderRadius:16,padding:"15px 16px",marginBottom:12,boxShadow:"0 2px 12px rgba(18,48,44,0.05)"},
+lbl:{fontSize:12,fontWeight:700,color:C.ink,marginBottom:5,display:"block"},
+inp:{width:"100%",border:`1px solid ${C.line}`,borderRadius:9,padding:"11px 12px",fontSize:14,outline:"none",background:C.bg,boxSizing:"border-box"},
+inpL:{width:"100%",border:"none",borderBottom:`1.5px solid ${C.line}`,padding:"9px 2px",fontSize:14,outline:"none",background:"transparent",boxSizing:"border-box"},
+row:{display:"flex",gap:10,marginBottom:13},
+fld:{marginBottom:13},
+btn:(bg=C.blue)=>({background:bg,color:C.white,border:"none",borderRadius:13,padding:"13px 0",width:"100%",fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 6px 16px rgba(18,48,44,0.13)"}),
+gbtn:{background:C.bg,color:C.ink,border:`1px solid ${C.line}`,borderRadius:10,padding:"11px 14px",fontSize:13,fontWeight:600,cursor:"pointer"},
+sec:{fontSize:13,fontWeight:800,color:C.ink,margin:"18px 0 9px",display:"flex",alignItems:"center",gap:6},
+th:{background:C.dark,color:C.white,fontSize:11,fontWeight:700,padding:"7px 6px",textAlign:"center",whiteSpace:"nowrap"},
+td:{fontSize:11,padding:"6px",borderBottom:`1px solid ${C.line}`,textAlign:"center",whiteSpace:"nowrap"},
+pill:(on)=>({padding:"8px 14px",borderRadius:20,fontSize:13,fontWeight:700,cursor:"pointer",border:on?"none":`1px solid ${C.line}`,background:on?C.blue:C.white,color:on?C.white:C.sub}),
+bnav:{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"9px 6px 18px",background:C.white,flexShrink:0,boxShadow:"0 -8px 22px rgba(18,48,44,0.08)",borderTop:`1px solid ${C.line}`},
+nav:(a)=>({display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",color:a?C.blue:C.sub,fontSize:10,fontWeight:a?700:400}),
+};
+const Field=({label,ph,half,cal,phone,icon,num,defVal,value,onChange})=>(
+<div style={half?{flex:1}:S.fld}>
+<span style={S.lbl}>{label}</span>
+<div style={{position:"relative"}}>
+<input style={S.inp} type={cal?"date":num?"number":"text"} placeholder={ph||""} {...(value!==undefined?{value,onChange}:{defaultValue:defVal||undefined})} min={num?0:undefined}/>
+{phone&&<span style={{position:"absolute",right:10,top:9,fontSize:15,pointerEvents:"none"}}>📞</span>}
+{icon&&<span style={{position:"absolute",right:10,top:9,fontSize:15,pointerEvents:"none"}}>{icon}</span>}
+</div>
+</div>
+);
+const Drop=({label,half,ph,options,value,onChange})=>{
+const[open,setOpen]=useState(false);const[valInner,setValInner]=useState("");const[custom,setCustom]=useState(false);
+const val=value!==undefined?value:valInner;
+const setVal=(o)=>{if(onChange)onChange(o);else setValInner(o);};
+const pick=(o)=>{setOpen(false);if(o==="직접 입력"){setCustom(true);setVal("");}else{setCustom(false);setVal(o);}};
+const opts=options||["옵션 1","옵션 2","옵션 3","직접 입력"];
+return(<div style={half?{flex:1,position:"relative"}:{...S.fld,position:"relative"}}>
+<span style={S.lbl}>{label}</span>
+{custom?
+<div style={{position:"relative"}}>
+<input style={{...S.inp,paddingRight:52}} value={val} onChange={e=>setVal(e.target.value)} placeholder="직접 입력" autoFocus/>
+<span onClick={()=>{setCustom(false);setVal("");}} title="목록에서 선택" style={{position:"absolute",right:8,top:8,cursor:"pointer",color:C.blueD,fontSize:11,fontWeight:700,background:C.blueL,borderRadius:6,padding:"3px 7px"}}>목록</span></div>
+:<div style={{...S.inp,position:"relative",display:"flex",alignItems:"center",paddingRight:34,color:val?C.ink:C.sub,cursor:"pointer"}} onClick={()=>setOpen(!open)}>
+<span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{val||ph||"선택하세요"}</span><span style={{position:"absolute",right:12,top:"50%",transform:`translateY(-50%)${open?" rotate(180deg)":""}`,pointerEvents:"none",fontSize:DARROW_SIZE,color:C.sub,lineHeight:0}}>▾</span></div>}
+{open&&!custom&&<div style={{position:"absolute",left:0,right:0,top:"100%",marginTop:4,background:C.white,border:`1px solid ${C.line}`,borderRadius:9,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:30,overflow:"hidden",maxHeight:246,overflowY:"auto"}}>
+{opts.map(o=><div key={o} style={{padding:"11px 12px",fontSize:14,cursor:"pointer",borderBottom:`1px solid ${C.bg}`,background:val===o?C.blueL:C.white}}
+onMouseDown={()=>pick(o)}>{o}</div>)}</div>}
+</div>);
+};
+const Tabs=({nav,cur,p})=>(
+<div style={S.tabbar}>
+<button style={S.back} onClick={()=>NAVREF.back()}>‹</button>
+<div style={{flex:1,display:"flex",justifyContent:"center",gap:10}}>
+<button style={{...S.navBtn("linear-gradient(135deg,#8A93A0 0%,#5E6875 100%)","rgba(94,104,117,0.34)"),padding:"8px 8px",fontSize:10,gap:3}} onClick={()=>nav("home")}><span style={{fontSize:12}}>🏠</span>홈</button>
+{cur==="install"
+?<button style={{...S.navBtn("linear-gradient(135deg,#14BBAC 0%,#0E9488 100%)","rgba(18,180,166,0.38)"),padding:"8px 8px",fontSize:10,gap:3}} onClick={()=>nav("visit",{p})}><span style={{fontSize:12}}>📝</span>방문일지</button>
+:<button style={{...S.navBtn("linear-gradient(135deg,#14BBAC 0%,#0E9488 100%)","rgba(18,180,166,0.38)"),padding:"8px 8px",fontSize:10,gap:3}} onClick={()=>nav("install",{p})}><span style={{fontSize:12}}>📋</span>설치현황</button>}
+<button style={{...S.navBtn("linear-gradient(135deg,#4A82F0 0%,#2451C7 100%)","rgba(46,111,224,0.38)"),padding:"8px 8px",fontSize:10,gap:3}} onClick={()=>nav("consume",{p})}><span style={{fontSize:12}}>📊</span>향료</button>
+<button style={{...S.navBtn("linear-gradient(135deg,#F28940 0%,#E4572E 100%)","rgba(228,87,46,0.38)"),padding:"8px 8px",fontSize:10,gap:3}} onClick={()=>nav("history")}><span style={{fontSize:12}}>🕘</span>이력</button>
+</div>
+</div>
+);
+const Info=({onClick})=><span onClick={onClick} style={{display:"inline-flex",width:16,height:16,borderRadius:"50%",background:"#111111",color:C.white,fontSize:11,fontWeight:900,alignItems:"center",justifyContent:"center",cursor:"pointer"}}>!</span>;
+const RefBtn=({onClick})=><span onClick={onClick} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,whiteSpace:"nowrap",fontSize:10,fontWeight:800,lineHeight:1.4,color:C.blueD,background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>참고</span>;
+const WhBtn=({onClick})=><span onClick={onClick} title="기록 보관함" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,lineHeight:1,background:"linear-gradient(180deg,#FFFFFF 0%,#E8F6F3 100%)",color:C.mintD,border:`1px solid ${C.mint}`,borderRadius:9,padding:"3px 8px",boxShadow:"0 2px 7px rgba(18,184,169,0.25)"}}>🗄️</span>;
+// 공통 드롭다운 화살표 (select용) — 크게 · 시인성
+const DARROW_SIZE=26;
+const DArrow=()=><span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",fontSize:DARROW_SIZE,color:C.sub,lineHeight:0}}>▾</span>;
+// [신규] 주요 거래처 즐겨찾기 별표 (비활성=음영없음 / 활성=노란색 음영)
+function StarBtn({name,size=20}){
+const[on,setOn]=useState(FAV.set.has(name));
+const toggle=(e)=>{if(e)e.stopPropagation();if(FAV.set.has(name))FAV.set.delete(name);else FAV.set.add(name);setOn(FAV.set.has(name));};
+return(<span onClick={toggle} title="주요 거래처 설정" style={{cursor:"pointer",display:"inline-flex",verticalAlign:"middle",lineHeight:0,filter:on?"drop-shadow(0 0 3px rgba(245,179,1,0.6))":"none"}}>
+<svg width={size} height={size} viewBox="0 0 24 24" fill={on?"#F5B301":"none"} stroke={on?"#E0A400":"#9AA6A4"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>);
+}
+const AddBtn=({label,onClick})=><button onClick={onClick} style={{width:"100%",border:`1.5px solid ${C.mint}`,background:"linear-gradient(180deg,#FFFFFF 0%,#E8F6F3 100%)",color:C.mintD,borderRadius:12,padding:"12px 0",fontSize:13,fontWeight:800,cursor:"pointer",marginBottom:14,boxShadow:"0 4px 12px rgba(18,184,169,0.18), inset 0 1px 0 #fff",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",background:C.mintD,color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>＋</span>{label}</button>;
+function Modal({title,children,onClose}){
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:20}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",borderTopLeftRadius:20,borderTopRightRadius:20,padding:"20px 20px 30px",maxHeight:"75%",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<span style={{fontSize:17,fontWeight:800}}>{title}</span><span style={{fontSize:22,cursor:"pointer"}} onClick={onClose}>✕</span></div>
+{children}
+<button style={{...S.btn(),marginTop:14}} onClick={onClose}>저장</button></div></div>);
+}
+// [신규] 페이지 내부 작은 팝업 (센터형)
+function MiniPopup({title,children,onClose}){
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:35,padding:"0 22px"}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",maxWidth:322,borderRadius:18,padding:"18px 18px 20px",maxHeight:"80%",overflowY:"auto",boxShadow:"0 22px 54px rgba(18,48,44,0.30)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+<span style={{fontSize:15,fontWeight:800}}>{title}</span>
+<span onClick={onClose} title="닫기" style={{fontSize:18,cursor:"pointer",color:C.sub,width:28,height:28,borderRadius:8,background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</span></div>
+{children}
+<button style={{...S.btn(),marginTop:14}} onClick={onClose}>저장</button></div></div>);
+}
+// [신규] 느낌표 옆에서 가깝게 열리는 앵커형 팝업 (부모는 position:relative)
+// w 지정 시 큰 팝업(폭/여백/제목 확대), anchor로 좌/우 정렬
+function AnchoredBox({title,children,onClose,w,anchor,up,tall}){
+const pos=w?{width:w,...(anchor==="right"?{right:0}:{left:0})}:{left:0,right:0};
+const vpos=up?{bottom:"100%",marginBottom:6}:{top:"100%",marginTop:5};
+return(<div style={{position:"absolute",...vpos,...pos,background:C.white,border:`1px solid ${C.line}`,borderRadius:12,boxShadow:"0 14px 36px rgba(18,48,44,0.30)",padding:w?"18px":"14px",zIndex:40,maxHeight:tall?560:360,overflowY:"auto"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:w?13:10}}>
+<span style={{fontSize:w?16:14,fontWeight:800}}>{title}</span>
+<span onClick={onClose} title="닫기" style={{fontSize:17,cursor:"pointer",color:C.sub,width:26,height:26,borderRadius:7,background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</span></div>
+{children}</div>);
+}
+// ===== [신규] 손글씨 서명 패드 (캔버스) =====
+function SignaturePad({label,height=150}){
+const canvasRef=useRef(null);
+const drawingRef=useRef(false);
+const lastRef=useRef({x:0,y:0});
+const[hasInk,setHasInk]=useState(false);
+const getPos=(e)=>{
+const canvas=canvasRef.current;const rect=canvas.getBoundingClientRect();
+const t=e.touches&&e.touches[0]?e.touches[0]:e;
+return {x:(t.clientX-rect.left)*(canvas.width/rect.width),y:(t.clientY-rect.top)*(canvas.height/rect.height)};
+};
+const start=(e)=>{e.preventDefault();drawingRef.current=true;lastRef.current=getPos(e);};
+const move=(e)=>{
+if(!drawingRef.current)return;e.preventDefault();
+const canvas=canvasRef.current;const ctx=canvas.getContext("2d");const p=getPos(e);
+ctx.strokeStyle="#1F2937";ctx.lineWidth=2.6;ctx.lineCap="round";ctx.lineJoin="round";
+ctx.beginPath();ctx.moveTo(lastRef.current.x,lastRef.current.y);ctx.lineTo(p.x,p.y);ctx.stroke();
+lastRef.current=p;if(!hasInk)setHasInk(true);
+};
+const end=()=>{drawingRef.current=false;};
+const clear=()=>{const canvas=canvasRef.current;const ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);setHasInk(false);};
+useEffect(()=>{const canvas=canvasRef.current;if(canvas){canvas.width=(canvas.offsetWidth||320)*2;canvas.height=height*2;}},[]);
+return(<div style={{marginBottom:6}}>
+<div style={{position:"relative",border:`2px solid ${hasInk?C.green:C.line}`,borderRadius:12,background:C.white,overflow:"hidden"}}>
+<canvas ref={canvasRef}
+style={{width:"100%",height:height,touchAction:"none",display:"block",cursor:PEN_CURSOR}}
+onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+onTouchStart={start} onTouchMove={move} onTouchEnd={end}/>
+{!hasInk&&<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",color:C.sub,gap:5}}>
+<span style={{fontSize:26}}>✍️</span><span style={{fontSize:12}}>{label||"여기에 손으로 서명해 주세요"}</span></div>}
+<div style={{position:"absolute",left:14,right:14,bottom:20,height:1,background:C.line,pointerEvents:"none"}}/>
+</div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:7}}>
+<span style={{fontSize:12,color:hasInk?C.green:C.sub,fontWeight:hasInk?700:400}}>{hasInk?"✓ 서명 입력됨":"미서명"}</span>
+<button onClick={clear} style={{...S.gbtn,fontSize:12,padding:"6px 12px"}}>🔄 다시 그리기</button></div>
+</div>);
+}
+// ===== [신규] 변경 이력 버튼 + 팝업 =====
+const LogBtn=({onClick})=><span onClick={onClick} style={{display:"inline-flex",alignItems:"center",fontSize:10,fontWeight:700,color:C.blue,background:C.blueL,border:`1px solid #BFD7FE`,borderRadius:6,padding:"2px 6px",cursor:"pointer",verticalAlign:"middle",marginLeft:4}}>🕘 이력</span>;
+function ChangeLogModal({data,onClose}){
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:45}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",borderTopLeftRadius:20,borderTopRightRadius:20,padding:"20px 20px 30px",maxHeight:"70%",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+<span style={{fontSize:16,fontWeight:800}}>🕘 {data.title}</span><span style={{fontSize:22,cursor:"pointer"}} onClick={onClose}>✕</span></div>
+{data.rows.map((r,i)=>(<div key={i} style={{display:"flex",gap:10,marginBottom:12}}>
+<div style={{width:10,height:10,borderRadius:"50%",background:i===0?C.blue:C.line,marginTop:5,flexShrink:0}}/>
+<div style={{flex:1,background:i===0?C.blueL:C.bg,border:`1px solid ${i===0?"#BFD7FE":C.line}`,borderRadius:10,padding:"10px 12px"}}>
+<div style={{fontSize:11,color:C.sub,fontWeight:700}}>{r.date}{i===0&&<span style={{color:C.blue,marginLeft:6}}>· 최신</span>}</div>
+<div style={{fontSize:13,marginTop:3}}>{r.text}</div></div></div>))}
+<button style={{...S.btn(),marginTop:6}} onClick={onClose}>닫기</button>
+</div></div>);
+}
+// ===== 계정 / 비밀번호 찾기 =====
+function FindAccountModal({onClose}){
+const[tab,setTab]=useState("account");
+const[aName,setAName]=useState("");const[aPhone,setAPhone]=useState("");const[aResult,setAResult]=useState(null);const[aErr,setAErr]=useState("");
+const[step,setStep]=useState(1);const[pId,setPId]=useState("");const[pPhone,setPPhone]=useState("");const[pErr,setPErr]=useState("");
+const[sentCode,setSentCode]=useState("");const[code,setCode]=useState("");const[codeErr,setCodeErr]=useState("");
+const[newPw,setNewPw]=useState("");const[newPw2,setNewPw2]=useState("");const[pwErr,setPwErr]=useState("");const[done,setDone]=useState(false);
+const switchTab=(t)=>{setTab(t);setAErr("");setAResult(null);setStep(1);setPErr("");setCodeErr("");setPwErr("");setDone(false);};
+const validPhone=(v)=>v.replace(/[^0-9]/g,"").length>=10;
+const findAccount=()=>{if(!aName.trim()||!aPhone.trim()){setAErr("이름과 휴대폰 번호를 모두 입력해 주세요.");return;}if(!validPhone(aPhone)){setAErr("휴대폰 번호를 정확히 입력해 주세요.");return;}setAErr("");const digits=aPhone.replace(/[^0-9]/g,"");const masked=digits.slice(0,3)+"****"+digits.slice(-4);setAResult(`${aName}님의 계정: fg_${masked}@fginternational.co.kr`);};
+const sendCode=()=>{if(!pId.trim()||!pPhone.trim()){setPErr("계정과 휴대폰 번호를 모두 입력해 주세요.");return;}if(!validPhone(pPhone)){setPErr("휴대폰 번호를 정확히 입력해 주세요.");return;}setPErr("");const gen=String(Math.floor(100000+Math.random()*900000));setSentCode(gen);setCode("");setCodeErr("");setStep(2);};
+const verifyCode=()=>{if(!code.trim()){setCodeErr("인증번호를 입력해 주세요.");return;}if(code.trim()!==sentCode){setCodeErr("인증번호가 일치하지 않습니다.");return;}setCodeErr("");setStep(3);};
+const changePw=()=>{if(newPw.length<4){setPwErr("비밀번호는 4자리 이상 입력해 주세요.");return;}if(newPw!==newPw2){setPwErr("비밀번호가 일치하지 않습니다.");return;}setPwErr("");setDone(true);};
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:40}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",borderTopLeftRadius:20,borderTopRightRadius:20,padding:"20px 20px 30px",maxHeight:"85%",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<span style={{fontSize:17,fontWeight:800}}>계정 / 비밀번호 찾기</span><span style={{fontSize:22,cursor:"pointer"}} onClick={onClose}>✕</span></div>
+<div style={{display:"flex",gap:8,marginBottom:18}}>
+<span onClick={()=>switchTab("account")} style={{flex:1,textAlign:"center",padding:"10px 0",borderRadius:9,cursor:"pointer",fontWeight:700,fontSize:13,border:`2px solid ${tab==="account"?C.blue:C.line}`,background:tab==="account"?C.blueL:C.white,color:tab==="account"?C.blue:C.sub}}>계정 찾기</span>
+<span onClick={()=>switchTab("password")} style={{flex:1,textAlign:"center",padding:"10px 0",borderRadius:9,cursor:"pointer",fontWeight:700,fontSize:13,border:`2px solid ${tab==="password"?C.blue:C.line}`,background:tab==="password"?C.blueL:C.white,color:tab==="password"?C.blue:C.sub}}>비밀번호 찾기</span></div>
+{tab==="account"&&<div>
+<div style={S.fld}><span style={S.lbl}>이름</span><input style={S.inp} value={aName} onChange={e=>setAName(e.target.value)} placeholder="이름을 입력하세요"/></div>
+<div style={S.fld}><span style={S.lbl}>휴대폰 번호</span><input style={S.inp} value={aPhone} onChange={e=>setAPhone(e.target.value)} placeholder="010-1234-5678"/></div>
+{aErr&&<div style={{color:C.red,fontSize:12,marginBottom:10}}>{aErr}</div>}
+{aResult&&<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,marginBottom:10}}><div style={{fontSize:13,color:C.green,fontWeight:700}}>{aResult}</div></div>}
+<button style={S.btn()} onClick={findAccount}>계정 찾기</button></div>}
+{tab==="password"&&<div>
+{step===1&&<div>
+<div style={S.fld}><span style={S.lbl}>계정 (사번 또는 이메일)</span><input style={S.inp} value={pId} onChange={e=>setPId(e.target.value)} placeholder="계정을 입력하세요"/></div>
+<div style={S.fld}><span style={S.lbl}>휴대폰 번호</span><input style={S.inp} value={pPhone} onChange={e=>setPPhone(e.target.value)} placeholder="010-1234-5678"/></div>
+{pErr&&<div style={{color:C.red,fontSize:12,marginBottom:10}}>{pErr}</div>}
+<button style={S.btn()} onClick={sendCode}>인증번호 받기</button></div>}
+{step===2&&<div>
+<div style={{fontSize:13,color:C.sub,marginBottom:10}}>{pPhone}(으)로 인증번호를 발송했습니다. <span style={{color:C.blue,fontWeight:700}}>(데모 인증번호: {sentCode})</span></div>
+<div style={S.fld}><span style={S.lbl}>인증번호</span><input style={S.inp} value={code} onChange={e=>setCode(e.target.value)} placeholder="인증번호 6자리"/></div>
+{codeErr&&<div style={{color:C.red,fontSize:12,marginBottom:10}}>{codeErr}</div>}
+<div style={{display:"flex",gap:10}}><button style={{...S.gbtn,flex:1}} onClick={()=>{setStep(1);setCode("");setCodeErr("");}}>이전</button><button style={{...S.btn(),flex:2}} onClick={verifyCode}>인증 확인</button></div></div>}
+{step===3&&!done&&<div>
+<div style={S.fld}><span style={S.lbl}>새 비밀번호</span><input type="password" style={S.inp} value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="새 비밀번호"/></div>
+<div style={S.fld}><span style={S.lbl}>새 비밀번호 확인</span><input type="password" style={S.inp} value={newPw2} onChange={e=>setNewPw2(e.target.value)} placeholder="새 비밀번호 확인"/></div>
+{pwErr&&<div style={{color:C.red,fontSize:12,marginBottom:10}}>{pwErr}</div>}
+<button style={S.btn()} onClick={changePw}>비밀번호 변경</button></div>}
+{done&&<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,textAlign:"center",padding:20}}>
+<div style={{fontSize:26}}>✅</div><div style={{fontWeight:700,color:C.green,marginTop:6}}>비밀번호가 변경되었습니다.</div>
+<button style={{...S.btn(C.green),marginTop:12}} onClick={onClose}>로그인 화면으로</button></div>}</div>}
+</div></div>);
+}
+// ===== 시리얼 기록 팝업 =====
+function SerialModal({info,onClose,anchored}){
+const {label="장비",client="",deviceId=0,deviceType=""}=info||{};
+const existing=SERIAL_DB.recs.filter(r=>r.client===client&&r.deviceId===deviceId);
+const[histPop,setHistPop]=useState(null);
+const[recs,setRecs]=useState([]);
+const[rdate,setRdate]=useState("");const[rtype,setRtype]=useState("");const[rserial,setRserial]=useState("");
+const[entries,setEntries]=useState(existing.length?existing.map(r=>({serial:r.serial,pumpP:r.pumpP||"",pump:r.pump||""})):[{serial:"",pumpP:"",pump:""}]);
+const updE=(i,k,v)=>setEntries(s=>s.map((x,idx)=>idx===i?{...x,[k]:v}:x));
+const save=()=>{SERIAL_DB.recs=SERIAL_DB.recs.filter(r=>!(r.client===client&&r.deviceId===deviceId));entries.forEach(e=>{if((e.serial||"").trim())SERIAL_DB.recs.push({client,deviceId,deviceType,serial:e.serial.trim(),pumpP:e.pumpP,pump:e.pump});});onClose();};
+const addRec=()=>{if(!rdate&&!rtype&&!rserial)return;setRecs(r=>[{date:rdate,type:rtype,serial:rserial},...r]);setRdate("");setRtype("");setRserial("");};
+const histBtn={width:"100%",boxSizing:"border-box",border:"1px solid #2E90F1",borderRadius:9,padding:"11px 12px",fontSize:14,fontWeight:800,color:"#fff",cursor:"pointer",background:"linear-gradient(180deg,#38BDF8 0%,#2E90F1 100%)",boxShadow:"0 4px 11px rgba(46,144,241,0.40), inset 0 1px 0 rgba(255,255,255,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:6};
+const histBox=(i)=>(histPop===i?<AnchoredBox title="🔁 교체 이력 기록" onClose={()=>setHistPop(null)} w="292px" anchor="right">
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>교체 날짜</span><input type="date" value={rdate} onChange={e=>setRdate(e.target.value)} style={S.inp}/></div>
+<Drop label="장비 유형" options={["스페어","본 계약 장비"]} half value={rtype} onChange={o=>setRtype(o)}/></div>
+<div style={S.fld}><span style={S.lbl}>시리얼</span><input value={rserial} onChange={e=>setRserial(e.target.value)} style={S.inp} placeholder="시리얼 번호"/></div>
+<button style={S.btn(C.mintD)} onClick={addRec}>＋ 교체 이력 추가</button>
+<div style={S.sec}>기록된 교체 이력 <span style={{fontSize:11,color:C.sub,fontWeight:600}}>({recs.length})</span></div>
+{recs.length===0?<div style={{fontSize:12,color:C.sub}}>아직 등록된 이력이 없습니다.</div>
+:recs.map((r,k)=><div key={k} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.line}`}}><span style={{fontSize:11,color:C.sub,fontWeight:700,minWidth:84}}>{r.date||"-"}</span><span style={{fontSize:12}}>{r.type||"-"} / {r.serial||"-"}</span></div>)}
+</AnchoredBox>:null);
+const body=(<React.Fragment>
+<div style={{...S.card,background:C.bg}}>
+<div style={{fontSize:13,fontWeight:800,color:C.blueD,marginBottom:8}}>장비 1{deviceType?" · "+deviceType:""}</div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>시리얼</span><input style={S.inp} value={entries[0].serial} onChange={e=>updE(0,"serial",e.target.value)}/></div>
+<div style={{flex:1,position:"relative"}}><span style={{...S.lbl,height:16,marginBottom:5,display:"block"}}>&nbsp;</span>
+<button onClick={()=>setHistPop(v=>v===0?null:0)} style={histBtn}>🔁 교체 이력</button>
+{histBox(0)}
+</div>
+</div>
+<div style={S.row}><div style={{flex:1}}><span style={S.lbl}>펌프압</span><input style={S.inp} value={entries[0].pumpP} onChange={e=>updE(0,"pumpP",e.target.value)}/></div>
+<Drop label="펌프 강도 (5단계)" options={PUMP} half value={entries[0].pump} onChange={o=>updE(0,"pump",o)}/></div>
+</div>
+{entries.slice(1).map((eq,idx)=>{const i=idx+1;return(
+<div key={i} style={{...S.card,background:C.bg}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:800,color:C.blueD}}>장비 {i+1}</span>
+<span onClick={()=>setEntries(s=>s.filter((_,j)=>j!==i))} style={{cursor:"pointer",color:C.sub,fontSize:12,fontWeight:700}}>✕ 삭제</span></div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>시리얼</span><input style={S.inp} value={eq.serial} onChange={e=>updE(i,"serial",e.target.value)}/></div>
+<div style={{flex:1,position:"relative"}}><span style={{...S.lbl,height:16,marginBottom:5,display:"block"}}>&nbsp;</span>
+<button onClick={()=>setHistPop(v=>v===i?null:i)} style={histBtn}>🔁 교체 이력</button>
+{histBox(i)}</div>
+</div>
+<div style={S.row}><div style={{flex:1}}><span style={S.lbl}>펌프압</span><input style={S.inp} value={eq.pumpP} onChange={e=>updE(i,"pumpP",e.target.value)}/></div>
+<Drop label="펌프 강도 (5단계)" options={PUMP} half value={eq.pump} onChange={o=>updE(i,"pump",o)}/></div>
+</div>);})}
+<AddBtn label="시리얼 추가" onClick={()=>setEntries(s=>[...s,{serial:"",pumpP:"",pump:""}])}/>
+<button style={{...S.btn(),marginTop:6}} onClick={save}>💾 저장</button>
+</React.Fragment>);
+if(anchored)return(<AnchoredBox title="📋 시리얼 기록" onClose={onClose} up tall>{body}</AnchoredBox>);
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:25}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",borderTopLeftRadius:20,borderTopRightRadius:20,padding:"20px 20px 30px",maxHeight:"88%",overflowY:"auto",position:"relative"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+<span style={{fontSize:17,fontWeight:800}}>📋 시리얼 기록</span><span style={{fontSize:22,cursor:"pointer"}} onClick={onClose}>✕</span></div>
+{body}
+</div></div>);
+}
+// ===== [신규] 장비 시리얼 관리 (전체 / 장비별 / 고객사별) =====
+function SerialList({nav}){
+const[view,setView]=useState("all");
+const[q,setQ]=useState("");
+const recs=SERIAL_DB.recs;
+const f=q.trim()?recs.filter(r=>((r.serial||"")+(r.deviceType||"")+(r.client||"")).toLowerCase().includes(q.trim().toLowerCase())):recs;
+const groupBy=(key)=>{const m={};f.forEach(r=>{const k=r[key]||"(미지정)";(m[k]=m[k]||[]).push(r);});return m;};
+const chip=(on)=>({flex:1,textAlign:"center",padding:"9px 0",borderRadius:9,cursor:"pointer",fontSize:13,fontWeight:700,border:`1.5px solid ${on?C.blue:C.line}`,background:on?C.blue:C.white,color:on?"#fff":C.sub});
+const Row=({r})=>(<div style={{...S.card,padding:"11px 13px",display:"flex",alignItems:"center",gap:11,marginBottom:8}}>
+<span style={{fontSize:20}}>🏷️</span>
+<div style={{flex:1}}><div style={{fontSize:14,fontWeight:800}}>{r.serial}</div>
+<div style={{fontSize:11,color:C.sub,marginTop:2}}>{r.deviceType||"장비 미지정"} · {r.client||"고객사 미지정"}</div></div></div>);
+const Section=({title,rows})=>(<div style={{marginBottom:14}}>
+<div style={{...S.sec,justifyContent:"space-between"}}><span>{title}</span><span style={{fontSize:11,color:C.sub,fontWeight:600}}>{rows.length}개</span></div>
+{rows.map((r,i)=><Row key={i} r={r}/>)}</div>);
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>장비 시리얼 관리</span></div>
+<div style={S.body}>
+<div style={{...S.inp,display:"flex",alignItems:"center",gap:10,marginBottom:12,background:C.bg}}>
+<span>🔍</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="시리얼 · 장비 · 고객사 검색" style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}}/></div>
+<div style={{display:"flex",gap:8,marginBottom:14}}>
+<span onClick={()=>setView("all")} style={chip(view==="all")}>전체</span>
+<span onClick={()=>setView("device")} style={chip(view==="device")}>장비별</span>
+<span onClick={()=>setView("client")} style={chip(view==="client")}>고객사별</span></div>
+<div style={{fontSize:12,color:C.sub,marginBottom:10}}>총 <b style={{color:C.blue}}>{f.length}</b>개 시리얼</div>
+{f.length===0&&<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>일치하는 시리얼이 없습니다.</div>}
+{view==="all"&&f.map((r,i)=><Row key={i} r={r}/>)}
+{view==="device"&&Object.entries(groupBy("deviceType")).sort((a,b)=>a[0].localeCompare(b[0],"ko")).map(([k,rows])=><Section key={k} title={"⚙️ "+k} rows={rows}/>)}
+{view==="client"&&Object.entries(groupBy("client")).sort((a,b)=>a[0].localeCompare(b[0],"ko")).map(([k,rows])=><Section key={k} title={"🏢 "+k} rows={rows}/>)}
+<div style={{fontSize:11,color:C.sub,marginTop:6,lineHeight:1.6}}>※ 시리얼은 설치 현황의 장비 기록 + 시리얼 기록 창에서 자동으로 수집됩니다. (입고·출고 날짜는 추후 반영 예정)</div>
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== 비밀번호 =====
+function Gate({onOk}){
+const[pw,setPw]=useState("");const[e,setE]=useState(false);
+const onChange=(ev)=>{
+const v=ev.target.value.replace(/[^0-9]/g,"").slice(0,4);
+setPw(v);setE(false);
+if(v.length===4){if(v===APP_PW){setTimeout(onOk,140);}else{setE(true);setTimeout(()=>setPw(""),280);}}
+};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:C.grad}}>
+<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 30px"}}>
+<div style={{fontSize:33,fontWeight:900,color:C.white,letterSpacing:2}}>All New Service</div>
+<div style={{color:"rgba(255,255,255,0.85)",fontSize:13,marginTop:8,marginBottom:40}}>현장 서비스 관리 시스템</div>
+<div style={{width:"100%",background:C.white,borderRadius:24,padding:"32px 26px 28px",boxShadow:"0 20px 44px rgba(18,48,44,0.24)"}}>
+<div style={{textAlign:"center",fontSize:30,marginBottom:10}}>🔒</div>
+<div style={{textAlign:"center",fontWeight:800,fontSize:16,color:C.ink,marginBottom:6}}>접근 코드 입력</div>
+<div style={{textAlign:"center",fontSize:12,color:C.sub,marginBottom:22,lineHeight:1.6}}>FG International 내부 전용 시스템입니다.<br/>4자리 코드를 입력하면 자동으로 넘어갑니다.</div>
+<input style={{...S.inp,fontSize:26,letterSpacing:16,textAlign:"center",padding:"14px 12px",borderColor:e?C.red:C.line,fontWeight:800,color:C.blue,background:C.bg}} type="password" inputMode="numeric" maxLength={4} value={pw} onChange={onChange} placeholder="••••" autoFocus/>
+{e&&<div style={{color:C.red,fontSize:12,marginTop:12,textAlign:"center"}}>접근 코드가 올바르지 않습니다.</div>}
+</div></div></div>);
+}
+// ===== 로그인 (탭 화면 + 로그인 통합) =====
+function SignIn({nav}){
+const[showFind,setShowFind]=useState(false);
+const[acct,setAcct]=useState("");
+const doLogin=()=>{const v=acct.trim();SESSION.name=(v&&!v.includes("@"))?v:"김영업";nav("home");};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:C.grad,position:"relative"}}>
+<button style={{...S.back,color:"#fff",fontSize:32,position:"absolute",top:42,left:16,zIndex:5}} onClick={()=>NAVREF.back()}>‹</button>
+<div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"0 28px"}}>
+<div style={{textAlign:"center",marginBottom:26}}>
+<div style={{fontSize:30,fontWeight:900,color:C.white,letterSpacing:1}}>SCENT SERVICE</div>
+<div style={{width:200,height:2,background:"rgba(255,255,255,0.55)",margin:"14px auto 16px"}}/>
+<div style={{fontSize:18,fontWeight:800,color:"#111111",whiteSpace:"nowrap",fontFamily:"'Noto Sans KR',sans-serif"}}>What does your brand 'SMELL' like?</div></div>
+<div style={{background:C.white,borderRadius:22,padding:"24px 22px",boxShadow:"0 18px 40px rgba(18,48,44,0.22)"}}>
+<div style={{...S.inp,display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"14px 14px"}}>
+<span style={{color:C.sub}}>👤</span><input value={acct} onChange={e=>setAcct(e.target.value)} style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}} placeholder="계정 (이름 또는 이메일)"/></div>
+<div style={{...S.inp,display:"flex",alignItems:"center",gap:10,marginBottom:18,padding:"14px 14px"}}>
+<span style={{color:C.sub}}>🔒</span><input type="password" onKeyDown={e=>e.key==="Enter"&&doLogin()} style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}} placeholder="비밀번호"/></div>
+<button style={S.btn()} onClick={doLogin}>로그인</button>
+<div style={{textAlign:"center",marginTop:14,fontSize:13,color:C.sub,textDecoration:"underline",cursor:"pointer"}} onClick={()=>setShowFind(true)}>계정 / 비밀번호 찾기</div>
+{showFind&&<FindAccountModal onClose={()=>setShowFind(false)}/>}</div>
+<div style={{marginTop:26,display:"flex",alignItems:"center",gap:9,justifyContent:"center"}}>
+<div style={{width:34,height:34,background:C.white,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:15,color:C.blue}}>FG</div>
+<span style={{fontSize:16,fontWeight:800,color:C.white}}>FG International</span></div>
+</div></div>);
+}
+// ===== [재추가] 오늘의 방문 (구글 캘린더 연동) =====
+function Today({nav}){
+const initName=CAL_TODAY[SESSION.name]?SESSION.name:"김영업";
+const[staff,setStaff]=useState(initName);
+const[warn,setWarn]=useState("");
+const list=CAL_TODAY[staff]||[];
+const d=new Date();
+const dstr=`${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,"0")}. ${String(d.getDate()).padStart(2,"0")}`;
+const dow=["일","월","화","수","목","금","토"][d.getDay()];
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>오늘의 방문</span></div>
+<div style={S.body}>
+<div style={{background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+<span style={{fontSize:16}}>📅</span>
+<div style={{flex:1}}><div style={{fontSize:12,fontWeight:800,color:C.blueD}}>Google Calendar 연동됨</div>
+<div style={{fontSize:11,color:C.sub,marginTop:1}}>담당자 캘린더를 선택하면 그날 방문 거래처만 표시됩니다.</div></div>
+<span style={{width:9,height:9,borderRadius:"50%",background:C.green,display:"inline-block"}}/></div>
+<span style={S.lbl}>담당자 캘린더 선택</span>
+<div style={{display:"flex",gap:8,marginBottom:14}}>
+{STAFF.map(s=><span key={s.id} onClick={()=>setStaff(s.name)} style={{flex:1,textAlign:"center",padding:"11px 0",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,
+border:`2px solid ${staff===s.name?C.blue:C.line}`,background:staff===s.name?C.blue:C.white,color:staff===s.name?C.white:C.sub}}>
+<span style={{display:"block",fontSize:11,opacity:.85,fontWeight:600}}>{s.id} 캘린더</span>{s.name}</span>)}</div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:10}}>
+<div><div style={{fontSize:20,fontWeight:900}}>{dstr} ({dow})</div>
+<div style={{fontSize:12,color:C.sub,marginTop:2}}><b style={{color:C.blue}}>{staff}</b> 담당자 · 오늘 방문 <b>{list.length}</b>곳</div></div>
+<span style={{fontSize:11,color:C.sub}}>탭 → 방문일지</span></div>
+{list.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>오늘 예정된 방문이 없습니다.</div>
+:list.map((v,i)=>{const ok=APP_CLIENTS.includes(v.c);return(
+<div key={i} onClick={()=>ok?nav("visit",{p:v.c}):setWarn(v.c)} style={{...S.card,cursor:"pointer",display:"flex",alignItems:"center",gap:12,padding:"14px 15px",borderLeft:`4px solid ${ok?(v.sev==="중대"?C.red:C.blue):C.line}`,opacity:ok?1:0.72}}>
+<div style={{width:34,height:34,borderRadius:"50%",background:ok?C.blueL:C.bg,color:ok?C.blueD:C.sub,fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+<div style={{flex:1}}>
+<div style={{fontWeight:800,fontSize:15}}>{v.c}{v.sev==="중대"&&ok&&<span style={{fontSize:11,color:C.red,marginLeft:6,fontWeight:700}}>🔴 중대이슈 이력</span>}</div>
+<div style={{fontSize:12,color:C.sub,marginTop:3}}>🕐 {v.t} · 📍 {v.loc}</div></div>
+{ok?<span style={{color:C.blue,fontWeight:700,fontSize:20}}>›</span>:<span style={{fontSize:10,fontWeight:700,color:C.sub,background:C.bg,border:`1px solid ${C.line}`,borderRadius:6,padding:"3px 6px"}}>미등록</span>}</div>);})}
+{warn&&<div style={{...S.card,background:C.redL,border:"1px solid #F5C2C2",marginTop:2}}><div style={{fontSize:12,color:C.red,lineHeight:1.6}}>⚠ '<b>{warn}</b>'은(는) 앱에 등록된 고객사명과 일치하지 않아 방문일지로 이동할 수 없습니다. (캘린더 고객사명과 앱 등록 고객사명이 일치해야 연동됩니다)</div></div>}
+<div style={{fontSize:11,color:C.sub,marginTop:6,lineHeight:1.6}}>※ 캘린더에 등록된 고객사명이 앱에 등록된 고객사명과 <b>일치할 때만</b> 해당 거래처 방문일지로 이동합니다.</div>
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== 메인 =====
+function Home({nav,store}){
+const[q,setQ]=useState("");
+const inspections=store?store.inspections:[];
+const PARTS=[["서비스 로그","log",{},"거래처 서비스 기록 조회 업체"],["고객사 히스토리","visithist",{},"업체 검색 운영 이력 조회 서방지 방문 히스토리"],["운영 히스토리 (전체)","history",{},"운영 이력 전체 크리티컬"],["설치 현황 (신규 작성)","install",{},"장비 설치 시리얼 계약 도면 scent mapping"],["향료 매니지먼트 리포트","consume",{},"향료 소비량 운영 데이터 리포트"],["향료 출고량 산정","ship",{},"기기별 초당 소비량 월 출고량 산정"],["서비스 만족도 설문 조사","surveymenu",{},"고객 만족도 설문"],["공간 향기 경험 설문조사","scentsurvey",{},"향기 경험 설문"],["설치 확인서","installdoc",{},"설치 완료 확인서 발급"],["장비 시리얼 관리","seriallist",{},"scm 시리얼 번호 조회 관리"],["Trouble Shooting / FAQ","faq",{},"문제 해결 자주 묻는 질문 트러블슈팅"],["오늘 방문 거래처","today",{},"구글 캘린더 오늘 일정 방문"],["개인정보 관리","profile",{},"프로필 계정 정보"]];
+const res=q.trim()?PARTS.filter(p=>(p[0]+" "+(p[3]||"")).toLowerCase().includes(q.trim().toLowerCase())):[];
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={{position:"relative",overflow:"hidden",background:C.grad,padding:"30px 22px 24px",color:"#fff",flexShrink:0,borderBottomLeftRadius:28,borderBottomRightRadius:28,boxShadow:"0 12px 28px rgba(18,184,169,0.30)"}}>
+<div style={{position:"absolute",right:-34,top:-34,width:135,height:135,borderRadius:"50%",background:"rgba(255,255,255,0.10)"}}/>
+<div style={{position:"absolute",right:50,top:58,width:68,height:68,borderRadius:"50%",background:"rgba(255,255,255,0.07)"}}/>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",position:"relative",zIndex:1}}>
+<div>
+<span style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.20)",borderRadius:20,padding:"4px 11px",fontSize:11,fontWeight:800,letterSpacing:.2,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.32)"}}>✦ FG International 현장 서비스 관리</span>
+<div style={{fontSize:27,fontWeight:900,letterSpacing:.3,marginTop:9}}>All New Service</div>
+<div style={{fontSize:13,opacity:.95,marginTop:4,fontWeight:700}}>{SESSION.name}님, 환영합니다 👋</div></div>
+<div onClick={()=>nav("profile")} title="개인정보 관리" style={{width:44,height:44,borderRadius:"50%",flexShrink:0,marginTop:34,background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.35), 0 5px 13px rgba(0,0,0,0.14)"}}>
+<svg width="23" height="23" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.4" r="3.7" stroke="#fff" strokeWidth="1.7"/><path d="M5.4 19.2c0-3.5 3-5.6 6.6-5.6s6.6 2.1 6.6 5.6" stroke="#fff" strokeWidth="1.7" strokeLinecap="round"/></svg></div></div></div>
+<div style={S.body}>
+<div style={{position:"relative",marginBottom:12}}>
+<div style={{display:"flex",alignItems:"center",gap:10,background:C.white,padding:"12px 15px",borderRadius:14,border:`1px solid ${C.line}`,boxShadow:"0 5px 16px rgba(18,48,44,0.06)"}}>
+<span style={{fontSize:16}}>🔍</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="어떤 서비스가 필요하세요?" style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}}/></div>
+{q.trim()&&<div style={{position:"absolute",left:0,right:0,top:"100%",marginTop:4,background:C.white,border:`1px solid ${C.line}`,borderRadius:10,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:30,overflow:"hidden"}}>
+{res.length===0&&<div style={{padding:"12px 14px",fontSize:13,color:C.sub}}>검색 결과가 없습니다.</div>}
+{res.map(p=><div key={p[1]} style={{padding:"12px 14px",fontSize:14,cursor:"pointer",borderBottom:`1px solid ${C.bg}`}} onMouseDown={()=>{nav(p[1],p[2]||{});}}>{p[0]}</div>)}</div>}</div>
+{inspections.length>0&&<div style={{marginBottom:22}}>
+<div style={{...S.sec,marginTop:0,justifyContent:"space-between"}}>
+<span>🔔 점검 예정 <span style={{fontSize:11,color:C.sub,fontWeight:600}}>({inspections.length})</span></span></div>
+{inspections.map(it=>(
+<div key={it.id} style={{background:it.sev==="중대"?C.redL:C.blueL,border:`1px solid ${it.sev==="중대"?"#F5C2C2":"#BFD7FE"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,cursor:"pointer"}} onClick={()=>nav("visit",{p:it.company})}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontWeight:800,fontSize:14}}>{it.company}</span>
+<span style={{fontSize:12,fontWeight:700,color:it.sev==="중대"?C.red:C.blue}}>다음 방문 {it.nextDate}</span></div>
+<div style={{fontSize:11,color:C.sub,marginTop:4}}>지난 방문 {it.visitDate}{it.sev==="중대"?" · 🔴 중대 이슈":""}</div>
+{it.issues.length>0&&<div style={{marginTop:6,display:"flex",flexWrap:"wrap",gap:4}}>
+{it.issues.map((x,k)=><span key={k} style={{fontSize:11,background:C.white,border:`1px solid ${C.line}`,borderRadius:6,padding:"2px 7px"}}>🔧 {x}</span>)}</div>}
+</div>))}</div>}
+<div onClick={()=>nav("today")} style={{display:"flex",alignItems:"center",gap:10,background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:14,padding:"12px 14px",marginBottom:14,cursor:"pointer"}}>
+<span style={{fontSize:20}}>📅</span>
+<div style={{flex:1}}><div style={{fontSize:13,fontWeight:800,color:C.blueD}}>오늘 방문 거래처</div>
+<div style={{fontSize:11,color:C.sub,marginTop:1}}>구글 캘린더 연동 · 오늘 방문 <b style={{color:C.blue}}>{(CAL_TODAY[SESSION.name]||CAL_TODAY["김영업"]||[]).length}</b>곳</div></div>
+<span style={{color:C.blue,fontWeight:700,fontSize:20}}>›</span></div>
+<div style={{display:"flex",gap:12,marginBottom:16}}>
+<div style={{flex:1,textAlign:"center",cursor:"pointer",background:C.white,borderRadius:20,padding:"18px 8px 15px",border:`1px solid ${C.line}`,boxShadow:"0 7px 20px rgba(18,48,44,0.07)"}} onClick={()=>nav("log")}>
+<div style={{width:82,height:82,borderRadius:24,background:C.grad,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",boxShadow:"0 10px 22px rgba(18,184,169,0.32), inset 0 1px 0 rgba(255,255,255,0.35)"}}><svg width="42" height="42" viewBox="0 0 24 24" fill="none" style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.18))"}}><rect x="4.5" y="4.2" width="15" height="16.8" rx="2.6" fill="rgba(255,255,255,0.18)" stroke="#fff" strokeWidth="1.7"/><rect x="8.6" y="2.6" width="6.8" height="3.6" rx="1.4" fill="#fff"/><path d="M8.2 11h7.6M8.2 14.4h7.6M8.2 17.8h4.6" stroke="#fff" strokeWidth="1.7" strokeLinecap="round"/></svg>
+<div onClick={(ev)=>{ev.stopPropagation();nav("install",{});}} title="신규 작성" style={{position:"absolute",bottom:-9,right:-14,display:"inline-flex",alignItems:"center",gap:3,background:"linear-gradient(135deg,#5B93FF 0%,#2E63E0 52%,#1E44B8 100%)",color:"#fff",borderRadius:16,padding:"3.5px 9px 3.5px 7px",boxShadow:"0 8px 18px rgba(30,68,184,0.5), inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 4px rgba(0,0,0,0.14)",border:"2px solid rgba(255,255,255,0.95)",cursor:"pointer",whiteSpace:"nowrap"}}>
+<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M4 20l1.2-4.2L15.5 5.5l3 3L8.2 18.8z" fill="rgba(255,255,255,0.22)" stroke="#fff" strokeWidth="2.1" strokeLinejoin="round"/><path d="M13.8 7.2l3 3" stroke="#fff" strokeWidth="2.1" strokeLinecap="round"/></svg>
+<span style={{fontSize:9.5,fontWeight:800,letterSpacing:.2}}>신규</span></div></div>
+<div style={{fontWeight:800,fontSize:16,marginTop:13}}>서비스 로그</div><div style={{fontSize:11,color:C.sub,marginTop:1}}>기록 조회</div></div>
+<div style={{flex:1,textAlign:"center",cursor:"pointer",background:C.white,borderRadius:20,padding:"18px 8px 15px",border:`1px solid ${C.line}`,boxShadow:"0 7px 20px rgba(18,48,44,0.07)"}} onClick={()=>nav("visithist")}>
+<div style={{width:82,height:82,borderRadius:24,background:"linear-gradient(135deg,#7FA8FF 0%,#3B6FE0 100%)",margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 22px rgba(46,123,228,0.30)"}}><svg width="42" height="42" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.6" fill="none" stroke="#fff" strokeWidth="1.7"/><path d="M12 6.8V12l3.5 2.1" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M5.2 9.2 3.3 8.4M5.2 9.2 5.9 7.2" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+<div style={{fontWeight:800,fontSize:16,marginTop:13}}>히스토리</div><div style={{fontSize:11,color:C.sub,marginTop:1}}>운영 이력</div></div></div>
+<div style={{fontSize:12,fontWeight:800,color:C.sub,margin:"0 2px 10px"}}>바로가기</div>
+{[["📦","향료 출고량 산정","ship","기기별 초당 소비량 · 월 출고량 산정"],["🗣️","서비스 만족도 설문 조사","surveymenu","고객 만족도 조사 · 결과 확인"],["🧰","설치 확인서","installdoc","설치 완료 확인서 발급"],["🛠️","Trouble Shooting or FAQ","faq","문제 해결 · 자주 묻는 질문"],["🏷️","[SCM] 장비 시리얼 관리","seriallist","시리얼 번호 조회 · 관리"]].map(([i,t,k,sub])=>(
+<div key={k} onClick={()=>nav(k)} style={{display:"flex",alignItems:"center",gap:13,padding:"13px 14px",marginBottom:10,background:C.white,borderRadius:16,border:`1px solid ${C.line}`,boxShadow:"0 4px 14px rgba(18,48,44,0.05)",cursor:"pointer"}}>
+<span style={{width:44,height:44,borderRadius:13,background:"linear-gradient(135deg,#E4F4F2 0%,#D0ECE8 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,boxShadow:"inset 0 1px 0 #fff"}}>{i}</span>
+<div style={{flex:1}}><div style={{fontSize:15,fontWeight:800}}>{t}</div><div style={{fontSize:11,color:C.sub,marginTop:2}}>{sub}</div></div>
+<span style={{color:C.sub,fontSize:18}}>›</span></div>))}</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== 서비스 로그: 업체 선택 =====
+function Log({nav}){
+const[q,setQ]=useState("");const[cho,setCho]=useState("");
+const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const getCho=s=>{const c=s.charCodeAt(0);return (c>=0xAC00&&c<=0xD7A3)?CHO[Math.floor((c-0xAC00)/588)]:s[0].toUpperCase();};
+const groups=PARTNERS.slice().sort((a,b)=>a.localeCompare(b,"ko"));
+const favs=groups.filter(g=>FAV.set.has(g));
+const list=q.trim()?groups.filter(g=>g.includes(q.trim())):(cho?groups.filter(g=>getCho(g)===cho):favs);
+const bar=["ㄱ","ㄴ","ㄷ","ㄹ","ㅁ","ㅂ","ㅅ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ",..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>Service Log</span></div>
+<div style={S.body}>
+<div style={{...S.inp,display:"flex",alignItems:"center",gap:10,marginBottom:12,background:C.bg}}>
+<span>🔍</span><input value={q} onChange={e=>{setQ(e.target.value);setCho("");}} placeholder="업체명을 검색하세요." style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}}/></div>
+<div style={{display:"flex",gap:4,fontSize:14,fontWeight:700,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
+{bar.map(x=><span key={x} onClick={()=>{setCho(cho===x?"":x);setQ("");}} style={{flexShrink:0,cursor:"pointer",padding:"4px 10px",borderRadius:8,color:cho===x?C.white:C.ink,background:cho===x?C.mintD:"transparent"}}>{x}</span>)}</div>
+<div style={{background:C.mintL,borderRadius:14,padding:"16px"}}>
+<div style={{fontSize:14,fontWeight:700,marginBottom:8,color:C.mintD}}>{q.trim()?`검색 결과 (${list.length})`:cho?`'${cho}' 거래처 (${list.length})`:"주요 거래처 (가나다 순)"}</div>
+{list.length===0&&<div style={{padding:"10px 6px",fontSize:14,color:C.sub}}>일치하는 업체가 없습니다.</div>}
+{list.map(g=><div key={g} style={{padding:"13px 6px",borderBottom:`1px solid ${C.mint}`,fontSize:15,fontWeight:600,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+onClick={()=>nav("logmenu",{p:g})}><span style={{display:"flex",alignItems:"center",gap:8}}>{g} <StarBtn name={g} size={17}/></span><span style={{color:C.mintD}}>›</span></div>)}</div></div>
+<Bottom active="log" nav={nav}/></div>);
+}
+// ===== 서비스 로그: 메뉴 =====
+function LogMenu({nav,params}){
+const p=params&&params.p?params.p:"JW메리어트";
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>Service Log</span></div>
+<div style={S.body}>
+<div style={{fontSize:16,marginBottom:22}}><span style={{color:C.sub}}>업체명 </span><b>{p}</b></div>
+{[
+{route:"install",icon:"📋",title:"설치 현황",sub:"설치 장비 · 위치 · 향기 정보 확인",grad:"linear-gradient(135deg,#12B4A6 0%,#48D9C6 100%)",sh:"rgba(18,180,166,0.32)"},
+{route:"visit",icon:"📝",title:"서비스 방문일지 (내부)",sub:"점검 · 내부 코멘트 · 상세 기록",grad:"linear-gradient(135deg,#14BBAC 0%,#0E9488 100%)",sh:"rgba(18,180,166,0.32)"},
+{route:"visitgen",icon:"📄",title:"서비스 방문일지 (일반)",sub:"고객 제공용 · 추출본",grad:"linear-gradient(135deg,#4A82F0 0%,#2451C7 100%)",sh:"rgba(46,111,224,0.32)"},
+{route:"consume",icon:"📊",title:"향료 매니지먼트 리포트",sub:"향료 소비 · 운영 데이터 분석",grad:"linear-gradient(135deg,#C77C1B 0%,#EBA92C 100%)",sh:"rgba(199,124,27,0.32)"}
+].map(b=>(
+<div key={b.route} onClick={()=>nav(b.route,{p})} style={{position:"relative",overflow:"hidden",background:b.grad,borderRadius:20,padding:"20px 18px",marginBottom:15,cursor:"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:`0 12px 26px ${b.sh}, inset 0 1px 0 rgba(255,255,255,0.28)`}}>
+<div style={{position:"absolute",right:-24,top:-24,width:92,height:92,borderRadius:"50%",background:"rgba(255,255,255,0.12)"}}/>
+<div style={{position:"absolute",right:14,bottom:-30,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.08)"}}/>
+<div style={{width:48,height:48,borderRadius:14,background:"rgba(255,255,255,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.45)",zIndex:1}}>{b.icon}</div>
+<div style={{flex:1,zIndex:1}}>
+<div style={{fontSize:17,fontWeight:800,color:"#fff",letterSpacing:"-0.3px"}}>{b.title}</div>
+<div style={{fontSize:11.5,fontWeight:600,color:"rgba(255,255,255,0.9)",marginTop:3}}>{b.sub}</div></div>
+<span style={{fontSize:22,fontWeight:700,color:"rgba(255,255,255,0.92)",zIndex:1}}>›</span></div>))}</div>
+<Bottom active="log" nav={nav}/></div>);
+}
+// ===== 설치 현황 =====
+function Install({nav,params}){
+const p=params&&params.p?params.p:"";
+const saved0=INSTALL_DATA[p]||{};
+const[f,setF]=useState(saved0.f?{...saved0.f}:{cust:p,mgrPhone:"010-",fgPhone:"010-"});
+const[mgrHist,setMgrHist]=useState(saved0.mgrHist?[...saved0.mgrHist]:[]);
+const[fgHist,setFgHist]=useState(saved0.fgHist?[...saved0.fgHist]:[]);
+const[pop,setPop]=useState(false);const[dpop,setDpop]=useState(false);const[fgpop,setFgpop]=useState(false);
+const[renewPop,setRenewPop]=useState(false);const[scentPop,setScentPop]=useState(false);const[scentHistPop,setScentHistPop]=useState(false);
+const[serial,setSerial]=useState(null);const[okMsg,setOkMsg]=useState(false);const[serialWarn,setSerialWarn]=useState(null);
+const[devRows,setDevRows]=useState(saved0.devRows?[...saved0.devRows]:[0,1]);
+const[renewHist,setRenewHist]=useState(saved0.renewHist?[...saved0.renewHist]:[]);
+const[scentHist,setScentHist]=useState(saved0.scentHist?[...saved0.scentHist]:[]);
+const commitScent=()=>{const v=(f.scent||"").trim();if(!v)return;setScentHist(h=>(h[0]&&h[0].name===v)?h:[{time:nowStr(),name:v},...h]);};
+const set=(k)=>(e)=>{setOkMsg(false);setF(o=>({...o,[k]:(e&&e.target)?e.target.value:e}));};
+const setV=(k,v)=>{setOkMsg(false);setF(o=>({...o,[k]:v}));};
+const nowStr=()=>{const d=new Date();const z=n=>String(n).padStart(2,"0");return `${d.getFullYear()}.${z(d.getMonth()+1)}.${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;};
+const commitMgr=()=>{const v=(f.mgr||"").trim();if(!v)return;setMgrHist(h=>(h[0]&&h[0].name===v)?h:[{time:nowStr(),name:v},...h]);};
+const commitFg=()=>{const v=(f.fg||"").trim();if(!v)return;setFgHist(h=>(h[0]&&h[0].name===v)?h:[{time:nowStr(),name:v},...h]);};
+const doSave=()=>{
+let mh=mgrHist,fh=fgHist,rh=renewHist;
+const mv=(f.mgr||"").trim();if(mv&&(!mh[0]||mh[0].name!==mv)){mh=[{time:nowStr(),name:mv},...mh];setMgrHist(mh);}
+const fv=(f.fg||"").trim();if(fv&&(!fh[0]||fh[0].name!==fv)){fh=[{time:nowStr(),name:fv},...fh];setFgHist(fh);}
+const rv=(f.d2||"").trim();if(rv&&(!rh[0]||rh[0].date!==rv)){rh=[{time:nowStr(),date:rv},...rh];setRenewHist(rh);}
+let sh=scentHist;const sv=(f.scent||"").trim();if(sv&&(!sh[0]||sh[0].name!==sv)){sh=[{time:nowStr(),name:sv},...sh];setScentHist(sh);}
+const key=((f.cust||"").trim())||p||"미지정";
+INSTALL_DATA[key]={f:{...f},mgrHist:mh,fgHist:fh,renewHist:rh,scentHist:sh,devRows:[...devRows]};
+setOkMsg(true);setSerialWarn(null);
+nav("visit",{p:key});
+};
+const save=()=>{
+const missing=[];
+devRows.forEach((id,idx)=>{const qty=parseInt(f["qty"+id]||"0",10)||0;if(qty>0){const cnt=SERIAL_DB.recs.filter(r=>r.client===p&&r.deviceId===id).length;if(cnt<qty)missing.push({name:f["dev"+id]||("장비 "+(idx+1)),qty,cnt});}});
+if(missing.length){setSerialWarn(missing);return;}
+doSave();
+};
+const formKey=(e)=>{if(e.key==="Enter"&&e.target&&e.target.tagName==="INPUT"&&e.target.type!=="button"){e.preventDefault();const box=e.currentTarget;const els=Array.prototype.slice.call(box.querySelectorAll("input,select,textarea")).filter(el=>!el.disabled&&el.type!=="button"&&el.type!=="file"&&el.offsetParent!==null);const i=els.indexOf(e.target);if(i>-1&&i<els.length-1){const nx=els[i+1];nx.focus();if(nx.scrollIntoView)nx.scrollIntoView({block:"center",behavior:"smooth"});}}};
+const onFocusScroll=(e)=>{if(e.target&&e.target.scrollIntoView)e.target.scrollIntoView({block:"center",behavior:"smooth"});};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<Tabs nav={nav} cur="install" p={p}/>
+<div style={S.body} onKeyDown={formKey} onFocus={onFocusScroll}>
+<span style={S.h1}>설치 현황</span>
+<div style={S.sec}>🏢 고객사 정보</div>
+<div style={{...S.fld,position:"relative"}}>
+<span style={{...S.lbl,display:"inline-flex",alignItems:"center",gap:6}}>고객사명 <RefBtn onClick={()=>{setPop(v=>!v);setDpop(false);setFgpop(false);setRenewPop(false);setScentPop(false);}}/> <StarBtn name={p||"미지정"} size={19}/></span>
+<input style={S.inp} value={f.cust||""} onChange={set("cust")}/>
+{pop&&<AnchoredBox title="주소 / 주차 / 서비스 절차" onClose={()=>setPop(false)}>
+<Field label="사업장 주소" value={f.addr||""} onChange={set("addr")}/>
+<Field label="주차 정보" value={f.parking||""} onChange={set("parking")}/>
+<div style={S.fld}><span style={S.lbl}>서비스 절차</span><textarea value={f.proc||""} onChange={set("proc")} style={{...S.inp,height:70,resize:"none"}} placeholder="방문 시 서비스 절차 · 유의사항을 입력하세요."/></div>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>비고</span><textarea value={f.remark||""} onChange={set("remark")} style={{...S.inp,height:64,resize:"none"}} placeholder="비고 (엔터로 줄바꿈 가능)"/></div>
+</AnchoredBox>}
+</div>
+<div style={S.row}>
+<div style={{flex:1,position:"relative"}}>
+<span style={{...S.lbl,display:"flex",alignItems:"center",gap:5,height:18,marginBottom:5}}>고객사 담당자 이름 <RefBtn onClick={()=>{setDpop(v=>!v);setPop(false);setFgpop(false);setRenewPop(false);setScentPop(false);}}/></span>
+<input style={S.inp} value={f.mgr||""} onChange={set("mgr")} onBlur={commitMgr}/>
+{dpop&&<AnchoredBox title="담당자 특징 / 성향 / 변경 이력" onClose={()=>setDpop(false)} w="320px" anchor="left">
+<div style={S.fld}><span style={S.lbl}>특징 / 성향 메모</span><textarea value={f.mgrMemo||""} onChange={set("mgrMemo")} style={{...S.inp,height:110,resize:"none"}} placeholder="담당자 특징 · 성향을 입력하세요."/></div>
+<div style={{...S.sec,marginTop:2}}>🕘 담당자 변경 이력</div>
+<div style={{...S.card,background:C.bg,marginBottom:0}}>
+{mgrHist.length===0?<div style={{fontSize:13,color:C.sub}}>담당자 이름을 입력하면 입력 시간과 함께 기록됩니다.</div>
+:mgrHist.map((r,i)=><div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<mgrHist.length-1?`1px solid ${C.line}`:"none"}}><span style={{fontSize:12,color:C.sub,fontWeight:700,minWidth:120}}>{r.time}</span><span style={{fontSize:13}}>{r.name}</span></div>)}</div>
+</AnchoredBox>}
+</div>
+<div style={{flex:1}}><span style={{...S.lbl,display:"flex",alignItems:"center",height:18,marginBottom:5}}>소속 부서</span><input style={S.inp} value={f.dept||""} onChange={set("dept")}/></div></div>
+<div style={S.row}>
+<Field label="이메일" half value={f.mgrEmail||""} onChange={set("mgrEmail")}/>
+<Field label="연락처" phone half value={f.mgrPhone||""} onChange={set("mgrPhone")}/></div>
+<div style={S.row}>
+<div style={{flex:1,position:"relative"}}>
+<span style={{...S.lbl,display:"flex",alignItems:"center",gap:5,height:18,marginBottom:5}}>FG 담당자 이름 <RefBtn onClick={()=>{setFgpop(v=>!v);setPop(false);setDpop(false);setRenewPop(false);setScentPop(false);}}/></span>
+<input style={S.inp} value={f.fg||""} onChange={set("fg")} onBlur={commitFg}/>
+{fgpop&&<AnchoredBox title="FG 담당자 변경 이력" onClose={()=>setFgpop(false)} w="310px" anchor="left">
+<div style={{...S.card,background:C.bg,marginBottom:0}}>
+{fgHist.length===0?<div style={{fontSize:13,color:C.sub}}>FG 담당자 이름을 입력하면 입력 날짜와 함께 기록됩니다.</div>
+:fgHist.map((r,i)=><div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<fgHist.length-1?`1px solid ${C.line}`:"none"}}><span style={{fontSize:12,color:C.sub,fontWeight:700,minWidth:96}}>{(r.time||"").split(" ")[0]}</span><span style={{fontSize:13}}>{r.name}</span></div>)}</div>
+</AnchoredBox>}
+</div>
+<div style={{flex:1}}><span style={{...S.lbl,display:"flex",alignItems:"center",height:18,marginBottom:5}}>연락처</span>
+<div style={{position:"relative"}}><input style={S.inp} value={f.fgPhone||""} onChange={set("fgPhone")}/><span style={{position:"absolute",right:10,top:9,fontSize:15,pointerEvents:"none"}}>📞</span></div></div></div>
+<div style={{height:1,background:C.line,margin:"18px 0 2px"}}/>
+<div style={S.sec}>📄 계약 정보</div>
+<div style={S.row}><Drop label="계약 형태" options={["렌탈","약정"]} half value={f.ctype||""} onChange={o=>setV("ctype",o)}/><Field label="월 렌탈 금액" half value={f.rental||""} onChange={set("rental")}/></div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={{...S.lbl,display:"flex",alignItems:"center",height:18,marginBottom:5}}>최초 계약일</span><input type="date" style={S.inp} value={f.d1||""} onChange={set("d1")}/></div>
+<div style={{flex:1,position:"relative"}}>
+<span style={{...S.lbl,display:"flex",alignItems:"center",gap:5,height:18,marginBottom:5}}>계약 갱신일 <span onClick={()=>{setRenewPop(v=>!v);setPop(false);setDpop(false);setFgpop(false);setScentPop(false);}} style={{display:"inline-flex",alignItems:"center",fontSize:10,fontWeight:800,color:C.blueD,background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>이력</span></span>
+<input type="date" style={S.inp} value={f.d2||""} onChange={set("d2")}/>
+{renewPop&&<AnchoredBox title="계약 갱신 이력" onClose={()=>setRenewPop(false)} w="310px" anchor="right">
+<div style={{...S.card,background:C.bg,marginBottom:0}}>
+{renewHist.length===0?<div style={{fontSize:13,color:C.sub}}>계약 갱신일을 입력하고 저장하면 자동으로 기록됩니다.</div>
+:renewHist.map((r,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<renewHist.length-1?`1px solid ${C.line}`:"none"}}><span style={{fontSize:13,fontWeight:700,minWidth:100}}>{r.date}</span><span style={{fontSize:11,color:C.sub}}>입력 시간 {r.time}</span></div>)}</div>
+</AnchoredBox>}
+</div>
+</div>
+<div style={S.row}><Field label="신규 설치일" cal half value={f.d3||""} onChange={set("d3")}/><Drop label="정기 방문일" options={["매월 1주차","매월 2주차","매월 3주차","매월 4주차","매월 5주차","매월 6주차","격월","분기"]} half value={f.cycle||""} onChange={o=>setV("cycle",o)}/></div>
+<div style={{height:1,background:C.line,margin:"18px 0 2px"}}/>
+<div style={S.sec}>⚙️ 향기/기기 정보</div>
+<div style={{...S.fld,position:"relative"}}><span style={{...S.lbl,display:"inline-flex",alignItems:"center",gap:5}}>향기명 <span onClick={()=>{setScentHistPop(v=>!v);setScentPop(false);setPop(false);setDpop(false);setFgpop(false);setRenewPop(false);}} style={{display:"inline-flex",alignItems:"center",fontSize:10,fontWeight:800,color:C.blueD,background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>이력</span></span>
+<div style={{position:"relative"}}><input style={{...S.inp,paddingRight:46}} value={f.scent||""} onChange={set("scent")} onBlur={commitScent}/>
+<span onClick={()=>{setScentPop(v=>!v);setScentHistPop(false);setPop(false);setDpop(false);setFgpop(false);setRenewPop(false);}} title="향기 정보 기록표" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:13,background:"linear-gradient(180deg,#FFFFFF 0%,#E8F6F3 100%)",color:C.mintD,border:`1px solid ${C.mint}`,borderRadius:8,padding:"3px 7px",boxShadow:"0 2px 6px rgba(18,184,169,0.25)"}}>📖</span></div>
+{scentHistPop&&<AnchoredBox title="🕘 향기명 입력 이력" onClose={()=>setScentHistPop(false)} w="300px" anchor="left">
+<div style={{...S.card,background:C.bg,marginBottom:0}}>
+{scentHist.length===0?<div style={{fontSize:13,color:C.sub}}>향기명을 입력하면 기록 날짜와 함께 저장됩니다.</div>
+:scentHist.map((r,i)=><div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<scentHist.length-1?`1px solid ${C.line}`:"none"}}><span style={{fontSize:12,color:C.sub,fontWeight:700,minWidth:120}}>{r.time}</span><span style={{fontSize:13}}>{r.name}</span></div>)}</div></AnchoredBox>}
+{scentPop&&<AnchoredBox title="향기 정보 기록표" onClose={()=>setScentPop(false)} w="300px" anchor="left" up>
+<div style={S.fld}><span style={S.lbl}>향기명</span><input value={f.scent||""} onChange={set("scent")} style={S.inp} placeholder="향기명"/></div>
+<div style={S.fld}><span style={S.lbl}>노트</span><input value={f.scentNote||""} onChange={set("scentNote")} style={S.inp} placeholder="예: 탑 / 미들 / 베이스 노트"/></div>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>향기 설명</span><textarea value={f.scentDesc||""} onChange={set("scentDesc")} style={{...S.inp,height:64,resize:"none"}} placeholder="향의 특징 · 설명"/></div>
+</AnchoredBox>}
+</div>
+{devRows.map((id,idx)=>(
+<div key={id} style={{...S.row,position:"relative"}}>
+<Drop label="장비 타입" options={DEVICES} half value={f["dev"+id]||""} onChange={o=>setV("dev"+id,o)}/>
+<div style={{flex:1}}><span style={{...S.lbl,display:"flex",justifyContent:"space-between",alignItems:"center"}}>수량 {devRows.length>1&&<span onClick={()=>setDevRows(r=>r.filter(x=>x!==id))} title="이 기기 삭제" style={{cursor:"pointer",color:C.sub,fontSize:12,fontWeight:700}}>✕ 삭제</span>}</span>
+<div style={{position:"relative"}}><input style={{...S.inp,paddingRight:48}} type="number" min={0} value={f["qty"+id]||""} onChange={set("qty"+id)}/>
+<span onClick={()=>setSerial(serial&&serial.deviceId===id?null:{label:"장비 "+(idx+1),client:p,deviceId:id,deviceType:f["dev"+id]||""})} title="시리얼 기록" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:13,color:"#fff",background:"linear-gradient(180deg,#38BDF8 0%,#2E90F1 100%)",borderRadius:8,padding:"5px 8px",boxShadow:"0 3px 7px rgba(46,144,241,0.45), inset 0 1px 0 rgba(255,255,255,0.4)"}}>📋</span>
+</div></div>
+</div>))}
+<AddBtn label="기기 추가" onClick={()=>setDevRows(r=>[...r,(r.length?Math.max(...r):-1)+1])}/>
+<div style={S.fld}><span style={S.lbl}>참고사항</span><textarea value={f.note||""} onChange={set("note")} style={{...S.inp,height:80,resize:"none"}}/></div>
+<button style={S.btn(C.mintD)} onClick={save}>저장</button>
+{serial&&<SerialModal info={serial} onClose={()=>setSerial(null)}/>}
+{okMsg&&<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,marginTop:10,textAlign:"center",padding:14}}>
+<div style={{fontWeight:800,color:C.green,fontSize:14}}>✅ 저장되었습니다</div>
+<div style={{fontSize:11,color:C.sub,marginTop:4}}>서방지(내부) 화면으로 이동합니다.</div></div>}
+{serialWarn&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:60,padding:20}} onClick={()=>setSerialWarn(null)}>
+<div style={{background:C.white,borderRadius:18,padding:"22px 20px",width:"100%",maxWidth:320,boxShadow:"0 18px 44px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{textAlign:"center",fontSize:34}}>⚠️</div>
+<div style={{textAlign:"center",fontWeight:800,fontSize:16,color:C.red,marginTop:4}}>시리얼 입력이 부족합니다</div>
+<div style={{fontSize:12,color:C.sub,textAlign:"center",marginTop:6,lineHeight:1.5}}>입력한 수량만큼 시리얼이 등록되지 않았습니다. 아래 장비의 시리얼을 확인해 주세요.</div>
+<div style={{...S.card,background:C.redL,border:`1px solid ${C.red}`,marginTop:12,marginBottom:0}}>
+{serialWarn.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<serialWarn.length-1?`1px solid rgba(192,57,43,0.2)`:"none"}}><span style={{fontSize:13,fontWeight:700}}>{m.name}</span><span style={{fontSize:12,color:C.red,fontWeight:800}}>시리얼 {m.cnt} / 수량 {m.qty}</span></div>)}</div>
+<div style={{display:"flex",gap:8,marginTop:16}}>
+<button style={{flex:1,border:`1.5px solid ${C.line}`,background:C.white,color:C.sub,borderRadius:11,padding:"11px 0",fontSize:13,fontWeight:800,cursor:"pointer"}} onClick={()=>setSerialWarn(null)}>시리얼 입력</button>
+<button style={{flex:1,border:"none",background:C.mintD,color:"#fff",borderRadius:11,padding:"11px 0",fontSize:13,fontWeight:800,cursor:"pointer"}} onClick={()=>doSave()}>무시하고 저장</button></div>
+</div></div>}
+</div>
+<Bottom active="log" nav={nav}/></div>);
+}
+// [신규] 사진 업로드/미리보기 그리드 (기본 3칸 · ＋ 즉시 업로드 · 삭제, 모바일 사진첩)
+function PhotoGrid(){
+const[photos,setPhotos]=useState([null,null,null]);
+const onPhoto=(idx,file)=>{if(!file)return;const rd=new FileReader();rd.onload=()=>setPhotos(ps=>ps.map((x,i)=>i===idx?rd.result:x));rd.readAsDataURL(file);};
+const onAdd=(file)=>{if(!file)return;const rd=new FileReader();rd.onload=()=>setPhotos(ps=>[...ps,rd.result]);rd.readAsDataURL(file);};
+return(<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+{photos.map((src,i)=>(<div key={i} style={{position:"relative"}}>
+{src?<><img src={src} alt="" style={{width:66,height:66,objectFit:"cover",borderRadius:8,border:`1px solid ${C.line}`,display:"block"}}/>
+<span onClick={()=>setPhotos(ps=>ps.filter((_,j)=>j!==i))} title="삭제" style={{position:"absolute",top:-6,right:-6,width:19,height:19,borderRadius:"50%",background:C.red,color:"#fff",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"2px solid #fff"}}>✕</span></>
+:<label style={{width:66,height:66,borderRadius:8,border:`1.5px dashed ${C.mint}`,background:C.mintL,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:18,color:C.mintD,fontWeight:700}}>📷<span style={{fontSize:9}}>업로드</span><input type="file" accept="image/*" style={{display:"none"}} onChange={e=>onPhoto(i,e.target.files&&e.target.files[0])}/></label>}
+</div>))}
+<label title="사진 추가" style={{width:66,height:66,borderRadius:8,border:`1.5px solid ${C.line}`,background:C.white,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:26,color:C.sub}}>＋<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>onAdd(e.target.files&&e.target.files[0])}/></label>
+</div>);
+}
+// [신규] 발향 구간표 : 사진 업로드(폭 조절) · 직선 그리기(굵기/형태/스냅) · 요소/텍스트(이동) · 발향강도 숫자 · 지우개
+const ERASE_CURSOR="url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Crect x='4' y='12' width='15' height='8' rx='2' transform='rotate(-42 11 16)' fill='%23FFC2C2' stroke='%23C0392B' stroke-width='1.5'/%3E%3C/svg%3E\") 5 20, auto";
+function ZoneMap({label,storeKey,readOnly}){
+const canvasRef=useRef(null);const boxRef=useRef(null);const dragRef=useRef(null);const dStart=useRef(null);const erasingRef=useRef(false);const resizeRef=useRef(false);const elResizeRef=useRef(null);const elRotRef=useRef(null);
+const init=(storeKey&&MAP_STORE[storeKey])||{};
+const[bg,setBg]=useState(init.bg||null);const[bgW,setBgW]=useState(init.bgW||100);const[bgH,setBgH]=useState(init.bgH||100);
+const[mode,setMode]=useState("");// "" | pen | panel | num | erase
+const[curNum,setCurNum]=useState(1);
+const[penW,setPenW]=useState(6);const[penDash,setPenDash]=useState(false);
+const[items,setItems]=useState(init.items||[]);const[nums,setNums]=useState(init.nums||[]);const[lines,setLines]=useState(init.lines||[]);const[draft,setDraft]=useState(null);
+useEffect(()=>{if(storeKey&&!readOnly)MAP_STORE[storeKey]={bg,bgW,bgH,items,nums,lines};},[storeKey,readOnly,bg,bgW,bgH,items,nums,lines]);
+const H=225;
+const ELEMENTS=[["🛋️","쇼파"],["🛗","엘리베이터"],["🪑","의자"],["desk-long","긴 책상"],["desk-short","짧은 책상"],["desk-L","ㄱ자 책상"],["table-round","원형 테이블"],["air","공기청정기"],["plant","화분"],["escalator","에스컬레이터"],["aroscent","Aroscent(W)"],["aroscent-b","Aroscent(B)"],["aroslim","Aroslim(B)"],["aroslim-s","Aroslim(S)"],["sink","세면대"],["toilet","좌변기"],["urinal","소변기"],["🚪","출입문"],["🪟","창문"],["🧯","소화기"]];
+const SHAPES=["desk-long","desk-short","desk-L","table-round","air","plant","escalator","aroscent","aroscent-b","aroslim","aroslim-s","sink","toilet","urinal"];
+const isShape=(ic)=>SHAPES.indexOf(ic)>=0;
+const deskShape=(code,s)=>{const top="linear-gradient(180deg,#E0C08C 0%,#C69A5C 100%)",edge="#96662F",leg="#7C5124";
+if(code==="air")return <svg width={17*s} height={34*s} viewBox="0 0 18 34" fill="none">
+<path d="M2.5 7V27Q2.5 30.5 9 30.5Q15.5 30.5 15.5 27V7Z" fill="#EEF2F4" stroke="#C0C8CD" strokeWidth="1"/>
+<g fill="#CAD3D9">
+<circle cx="5" cy="11" r="0.6"/><circle cx="7" cy="11" r="0.6"/><circle cx="9" cy="11" r="0.6"/><circle cx="11" cy="11" r="0.6"/><circle cx="13" cy="11" r="0.6"/>
+<circle cx="5" cy="13.5" r="0.6"/><circle cx="7" cy="13.5" r="0.6"/><circle cx="9" cy="13.5" r="0.6"/><circle cx="11" cy="13.5" r="0.6"/><circle cx="13" cy="13.5" r="0.6"/>
+<circle cx="5" cy="16" r="0.6"/><circle cx="7" cy="16" r="0.6"/><circle cx="9" cy="16" r="0.6"/><circle cx="11" cy="16" r="0.6"/><circle cx="13" cy="16" r="0.6"/>
+<circle cx="5" cy="18.5" r="0.6"/><circle cx="7" cy="18.5" r="0.6"/><circle cx="9" cy="18.5" r="0.6"/><circle cx="11" cy="18.5" r="0.6"/><circle cx="13" cy="18.5" r="0.6"/>
+<circle cx="5" cy="21" r="0.6"/><circle cx="7" cy="21" r="0.6"/><circle cx="9" cy="21" r="0.6"/><circle cx="11" cy="21" r="0.6"/><circle cx="13" cy="21" r="0.6"/>
+<circle cx="5" cy="23.5" r="0.6"/><circle cx="7" cy="23.5" r="0.6"/><circle cx="9" cy="23.5" r="0.6"/><circle cx="11" cy="23.5" r="0.6"/><circle cx="13" cy="23.5" r="0.6"/>
+<circle cx="5" cy="26" r="0.6"/><circle cx="7" cy="26" r="0.6"/><circle cx="9" cy="26" r="0.6"/><circle cx="11" cy="26" r="0.6"/><circle cx="13" cy="26" r="0.6"/></g>
+<ellipse cx="9" cy="7" rx="6.5" ry="2.8" fill="#E3EFF7" stroke="#9CC3DC" strokeWidth="1"/>
+<ellipse cx="9" cy="6.8" rx="4" ry="1.7" fill="#3D9AD4"/>
+<path d="M9 5.3A1.7 1.7 0 0 1 11 6.8" stroke="#2A7EB4" strokeWidth="0.75" fill="none" strokeLinecap="round"/>
+<path d="M9 8.3A1.7 1.7 0 0 1 7 6.8" stroke="#2A7EB4" strokeWidth="0.75" fill="none" strokeLinecap="round"/>
+<circle cx="9" cy="6.8" r="0.8" fill="#1E6EA6"/></svg>;
+if(code==="plant")return <svg width={23*s} height={30*s} viewBox="0 0 23 30" fill="none">
+<path d="M11.5 17C6 14.5 4 7.5 7 3C10 7 11.5 11 11.5 17Z" fill="#5BAF6A"/>
+<path d="M11.5 17C17 14.5 19 7.5 16 3C13 7 11.5 11 11.5 17Z" fill="#4E9E5D"/>
+<path d="M11.5 17C11 9.5 11.5 5 11.5 2C12.2 6 12 12 11.5 17Z" fill="#69C079"/>
+<path d="M4.5 16H18.5L16.4 28H6.6Z" fill="#C67B4E" stroke="#9A5A32" strokeWidth="0.9"/>
+<rect x="3.5" y="14.6" width="16" height="3.2" rx="1.3" fill="#D98A5C" stroke="#9A5A32" strokeWidth="0.9"/></svg>;
+if(code==="escalator")return <svg width={34*s} height={24*s} viewBox="0 0 34 24" fill="none">
+<rect x="1" y="20.5" width="32" height="2.6" rx="1.2" fill="#AEB6BC"/>
+<path d="M5 20.5L23 4H29L11 20.5Z" fill="#E9EEF1" stroke="#9AA7B0" strokeWidth="0.9" strokeLinejoin="round"/>
+<path d="M6.5 20.5H9.5L9.5 18.6H11.5L11.5 16.7H13.5L13.5 14.8H15.5L15.5 12.9H17.5L17.5 11H19.5L19.5 9.1H21.5L21.5 7.2H23.5" fill="none" stroke="#7C8A93" strokeWidth="1" strokeLinejoin="round"/>
+<path d="M5.4 19.6L22.6 3.6Q24.4 2 25.6 3.8" stroke="#2E2E30" strokeWidth="2" fill="none" strokeLinecap="round"/>
+<circle cx="7" cy="21.9" r="1.1" fill="#7C8A93"/><circle cx="29" cy="21.9" r="1.1" fill="#7C8A93"/></svg>;
+const aros=(body,panel,pstroke,dot)=><svg width={22*s} height={20*s} viewBox="0 0 22 20" fill="none">
+<rect x="1.5" y="1.5" width="19" height="17" rx="3" fill={body}/>
+<rect x="3.3" y="3.2" width="6.6" height="13.6" rx="1.6" fill={panel} stroke={pstroke} strokeWidth="0.6"/>
+<rect x="12.1" y="3.2" width="6.6" height="13.6" rx="1.6" fill={panel} stroke={pstroke} strokeWidth="0.6"/>
+<line x1="11" y1="3.5" x2="11" y2="16.5" stroke={pstroke} strokeWidth="0.8"/>
+<circle cx="11" cy="16" r="1.1" fill={dot}/></svg>;
+if(code==="aroscent")return aros("#FAFBFC","#F1F4F6","#DCE1E4","#E4572E");
+if(code==="aroscent-b")return aros("#2E2E30","#3A3A3D","#4A4A4D","#E4572E");
+const aroslimS=(pole,hi,b1,b2,ctl)=><svg width={12*s} height={30*s} viewBox="0 0 12 30" fill="none">
+<ellipse cx="6" cy="26.5" rx="5" ry="1.9" fill={b2}/>
+<ellipse cx="6" cy="25.6" rx="5" ry="1.9" fill={b1}/>
+<rect x="4.2" y="2" width="3.6" height="24" rx="1.8" fill={pole}/>
+<rect x="4.7" y="2.6" width="1" height="22.5" rx="0.5" fill={hi}/>
+<circle cx="6" cy="21" r="1" fill={ctl}/></svg>;
+if(code==="aroslim")return aroslimS("#2C2C2E","#55555a","#232325","#3a3a3c","#6a6a6f");
+if(code==="aroslim-s")return aroslimS("#C6CBD0","#EEF0F2","#9AA0A6","#B7BCC1","#7d8388");
+if(code==="sink")return <svg width={22*s} height={16*s} viewBox="0 0 22 16" fill="none">
+<rect x="1" y="1" width="20" height="14" rx="3.5" fill="#EDF1F3" stroke="#B7C0C6" strokeWidth="1"/>
+<ellipse cx="11" cy="9" rx="6.8" ry="4.1" fill="#DCE3E7" stroke="#AEBBC3" strokeWidth="0.8"/>
+<circle cx="11" cy="9" r="0.9" fill="#9AA7B0"/>
+<rect x="9.6" y="1.8" width="2.8" height="2.6" rx="1" fill="#B7C0C6"/></svg>;
+if(code==="toilet")return <svg width={14*s} height={22*s} viewBox="0 0 14 22" fill="none">
+<rect x="2" y="1" width="10" height="4.8" rx="1.6" fill="#EDF1F3" stroke="#B7C0C6" strokeWidth="1"/>
+<ellipse cx="7" cy="13.5" rx="5.3" ry="7.2" fill="#F3F6F8" stroke="#B7C0C6" strokeWidth="1"/>
+<ellipse cx="7" cy="13.5" rx="3" ry="4.6" fill="#DCE3E7"/></svg>;
+if(code==="urinal")return <svg width={13*s} height={20*s} viewBox="0 0 13 20" fill="none">
+<rect x="5.4" y="0.3" width="2.2" height="1.9" rx="0.8" fill="#AEBBC3"/>
+<path d="M2 2.6Q2 1.4 3.2 1.4H9.8Q11 1.4 11 2.6V8.4Q11 13.6 6.5 18.4Q2 13.6 2 8.4Z" fill="#F3F6F8" stroke="#B7C0C6" strokeWidth="1"/>
+<path d="M3.7 3.4Q3.7 2.5 4.5 2.5H8.5Q9.3 2.5 9.3 3.4V8Q9.3 12 6.5 15.4Q3.7 12 3.7 8Z" fill="#DCE3E7" stroke="#AEBBC3" strokeWidth="0.6"/>
+<ellipse cx="6.5" cy="9.4" rx="1.2" ry="0.75" fill="#9AA7B0"/></svg>;
+const side=(w,h)=>(<div style={{position:"relative",width:w*s,height:h*s}}>
+<div style={{position:"absolute",left:0,top:0,width:w*s,height:5*s,background:top,borderRadius:"3px 3px 1px 1px",boxShadow:`0 ${2*s}px 0 ${edge}`}}/>
+<div style={{position:"absolute",left:3*s,top:7*s,width:2.6*s,height:(h-7)*s,background:leg,borderRadius:1}}/>
+<div style={{position:"absolute",right:3*s,top:7*s,width:2.6*s,height:(h-7)*s,background:leg,borderRadius:1}}/></div>);
+if(code==="desk-long")return side(46,19);
+if(code==="desk-short")return side(28,19);
+if(code==="desk-L")return <div style={{width:30*s,height:26*s,background:"linear-gradient(160deg,#E7CB98 0%,#CDA267 58%,#9A6A32 100%)",clipPath:"polygon(0 0,100% 0,100% 42%,42% 42%,42% 100%,0 100%)",borderRadius:2,boxShadow:"0 1px 2px rgba(0,0,0,0.3)"}}/>;
+if(code==="table-round")return <div style={{position:"relative",width:24*s,height:22*s}}>
+<div style={{position:"absolute",left:0,top:0,width:24*s,height:7*s,background:top,borderRadius:"50%",boxShadow:`0 ${1.5*s}px 0 ${edge}`}}/>
+<div style={{position:"absolute",left:10.5*s,top:7*s,width:3*s,height:11*s,background:leg}}/>
+<div style={{position:"absolute",left:6*s,bottom:0,width:12*s,height:3*s,background:leg,borderRadius:2}}/></div>;
+return null;};
+useEffect(()=>{const c=canvasRef.current;if(c){c.width=(c.offsetWidth||300)*2;c.height=H*2;}},[]);
+useEffect(()=>{const c=canvasRef.current;if(!c)return;const ctx=c.getContext("2d");ctx.clearRect(0,0,c.width,c.height);const drawL=(l,prev)=>{ctx.strokeStyle=prev?"rgba(228,87,46,0.55)":(l.color||"#E4572E");ctx.lineWidth=l.w||6;ctx.lineCap="round";ctx.lineJoin="round";ctx.setLineDash(l.dash?[l.w*2.4,l.w*1.8]:[]);ctx.beginPath();ctx.moveTo(l.x1,l.y1);ctx.lineTo(l.x2,l.y2);ctx.stroke();};lines.forEach(l=>drawL(l,false));if(draft)drawL({...draft,w:penW,dash:penDash},true);ctx.setLineDash([]);},[lines,draft,penW,penDash]);
+const cpos=(e)=>{const c=canvasRef.current;const r=c.getBoundingClientRect();const t=e.touches&&e.touches[0]?e.touches[0]:e;return{x:(t.clientX-r.left)*(c.width/r.width),y:(t.clientY-r.top)*(c.height/r.height)};};
+const bpos=(e)=>{const r=boxRef.current.getBoundingClientRect();const t=e.touches&&e.touches[0]?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};};
+const snap=(pt)=>{let best=null,bd=24;lines.forEach(l=>{[[l.x1,l.y1],[l.x2,l.y2]].forEach(([x,y])=>{const d=Math.hypot(x-pt.x,y-pt.y);if(d<bd){bd=d;best={x,y};}});});return best||pt;};
+const dSeg=(px,py,l)=>{const dx=l.x2-l.x1,dy=l.y2-l.y1,L2=dx*dx+dy*dy||1;let t=((px-l.x1)*dx+(py-l.y1)*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(l.x1+t*dx),py-(l.y1+t*dy));};
+const start=(e)=>{e.preventDefault();const pt=snap(cpos(e));dStart.current=pt;setDraft({x1:pt.x,y1:pt.y,x2:pt.x,y2:pt.y});};
+const move=(e)=>{if(!dStart.current)return;e.preventDefault();const pt=snap(cpos(e));setDraft(d=>d&&{...d,x2:pt.x,y2:pt.y});};
+const endDraw=(e)=>{if(!dStart.current)return;const pt=snap(cpos(e));const s=dStart.current;dStart.current=null;setDraft(null);if(Math.hypot(pt.x-s.x,pt.y-s.y)>8)setLines(a=>[...a,{x1:s.x,y1:s.y,x2:pt.x,y2:pt.y,w:penW,dash:penDash,color:"#E4572E"}]);};
+const eraseAt=(e)=>{const pt=cpos(e);setLines(a=>a.filter(l=>dSeg(pt.x,pt.y,l)>18));};
+const cDown=(e)=>{if(mode==="pen")start(e);else if(mode==="erase"){erasingRef.current=true;eraseAt(e);}};
+const cMove=(e)=>{if(mode==="pen")move(e);else if(mode==="erase"&&erasingRef.current)eraseAt(e);};
+const cUp=(e)=>{if(mode==="pen")endDraw(e);else if(mode==="erase")erasingRef.current=false;};
+const startDrag=(e,idx)=>{if(mode==="erase")return;e.stopPropagation();dragRef.current=idx;};
+const onBoxMove=(e)=>{const w=(boxRef.current&&boxRef.current.offsetWidth)||300;if(elRotRef.current){e.preventDefault();const r=elRotRef.current;const t=e.touches&&e.touches[0]?e.touches[0]:e;const dr=t.clientX-r.sx;setItems(a=>a.map((it,i)=>i===r.i?{...it,rot:r.sr+dr}:it));return;}if(elResizeRef.current){e.preventDefault();const r=elResizeRef.current;const t=e.touches&&e.touches[0]?e.touches[0]:e;const dx=t.clientX-r.sx;const ns=Math.max(0.5,Math.min(3.2,r.sc+dx/70));setItems(a=>a.map((it,i)=>i===r.i?{...it,scale:ns}:it));return;}if(resizeRef.current){e.preventDefault();const pt=bpos(e);setBgW(Math.max(20,Math.min(130,pt.x/w*100)));setBgH(Math.max(20,Math.min(100,pt.y/H*100)));return;}if(dragRef.current==null)return;const pt=bpos(e);setItems(a=>a.map((it,i)=>i===dragRef.current?{...it,x:Math.max(0,Math.min(pt.x-16,w-26)),y:Math.max(0,Math.min(pt.y-14,H-26))}:it));};
+const onBoxUp=()=>{dragRef.current=null;resizeRef.current=false;elResizeRef.current=null;elRotRef.current=null;};
+const onBoxClick=(e)=>{if(mode!=="num"||dragRef.current!=null)return;const pt=bpos(e);setNums(a=>[...a,{n:curNum,x:Math.max(0,pt.x-11),y:Math.max(0,pt.y-11)}]);};
+const upload=(file)=>{if(!file)return;const rd=new FileReader();rd.onload=()=>{setBg(rd.result);setBgW(100);setBgH(100);};rd.readAsDataURL(file);};
+const mb=(on,onbg,fg,dis)=>({display:"inline-flex",alignItems:"center",gap:4,borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:dis?"not-allowed":"pointer",border:`1px solid ${C.mint}`,background:on?onbg:C.white,color:on?"#fff":fg,opacity:dis?0.38:1});
+const chip=(on)=>({display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:`1.5px solid ${on?C.blueD:C.line}`,background:on?C.blueL:C.white,color:on?C.blueD:C.sub});
+const toggle=(m)=>setMode(v=>v===m?"":m);const busy=(m)=>mode!==""&&mode!==m;
+return(<div>
+{!readOnly&&<React.Fragment>
+<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+<label style={mb(false,"",C.mintD,false)}>📷 사진<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>upload(e.target.files&&e.target.files[0])}/></label>
+<span onClick={()=>toggle("pen")} style={mb(mode==="pen",C.mintD,C.mintD,false)}>✏️ 그리기</span>
+<span onClick={()=>toggle("panel")} style={mb(mode==="panel",C.blue,C.blueD,false)}>🧩 요소</span>
+<span onClick={()=>setItems(a=>[...a,{type:"text",text:"텍스트",x:22+(a.length*12)%180,y:22+(a.length*12)%150}])} style={mb(false,"",C.blueD,false)}>🅣 텍스트</span>
+<span onClick={()=>toggle("num")} style={mb(mode==="num",C.blue,C.blueD,false)}>🔢 발향 강도</span>
+<span onClick={()=>toggle("erase")} style={mb(mode==="erase",C.red,C.red,false)}>🧽 지우기</span></div>
+{bg&&<div style={{fontSize:10,color:C.sub,marginBottom:6}}>사진 우측 하단 ◢ 핸들을 드래그해 크기를 조절하고, 우측 상단 ✕ 로 삭제할 수 있습니다.</div>}
+{mode==="pen"&&<div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+<span style={{fontSize:11,color:C.sub,fontWeight:700}}>굵기</span>
+{[["얇게",3],["보통",6],["굵게",11]].map(([lb,w])=><span key={w} onClick={()=>setPenW(w)} style={chip(penW===w)}>{lb}</span>)}
+<span style={{fontSize:11,color:C.sub,fontWeight:700,marginLeft:4}}>형태</span>
+<span onClick={()=>setPenDash(false)} style={chip(!penDash)}>실선</span>
+<span onClick={()=>setPenDash(true)} style={chip(penDash)}>점선</span>
+<span style={{fontSize:10,color:C.sub,width:"100%"}}>시작점→끝점을 드래그하면 직선으로 그려지며, 끝점 근처는 자동 연결됩니다.</span></div>}
+{mode==="panel"&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,padding:"8px 10px",background:C.bg,borderRadius:8}}>
+{ELEMENTS.map(([ic,nm])=><span key={nm} onClick={()=>setItems(a=>[...a,{type:"el",icon:ic,x:16+(a.length*24)%210,y:16+((a.length*20)%160),scale:1,rot:0}])} style={{display:"inline-flex",flexDirection:"column",alignItems:"center",cursor:"pointer",width:52}}>{isShape(ic)?<div style={{height:26,display:"flex",alignItems:"center",justifyContent:"center"}}>{deskShape(ic,0.7)}</div>:<span style={{fontSize:22}}>{ic}</span>}<span style={{fontSize:9,color:C.sub,marginTop:2,whiteSpace:"nowrap"}}>{nm}</span></span>)}</div>}
+{mode==="panel"&&<div style={{fontSize:10,color:C.sub,marginBottom:8}}>요소 추가 후 우측 하단 ◢ 로 크기 조절, 좌측 상단 ↻ 를 클릭하면 90°씩(90·180·270·360) 회전합니다.</div>}
+{mode==="num"&&<div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+<span style={{fontSize:11,color:C.sub,fontWeight:700}}>강도 선택 후 도면 클릭</span>
+{[1,2,3,4,5,6,7].map(n=><span key={n} onClick={()=>setCurNum(n)} style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,cursor:"pointer",border:`1.5px solid ${curNum===n?C.blue:C.line}`,background:curNum===n?C.blue:C.white,color:curNum===n?"#fff":C.sub}}>{n}</span>)}</div>}
+{mode==="erase"&&<div style={{fontSize:11,color:C.red,fontWeight:700,marginBottom:8}}>🧽 지우개 · 도면의 선·요소·강도를 클릭 또는 드래그하여 지웁니다.</div>}
+</React.Fragment>}
+<div ref={boxRef} onClick={readOnly?undefined:onBoxClick} onMouseMove={readOnly?undefined:onBoxMove} onMouseUp={readOnly?undefined:onBoxUp} onMouseLeave={readOnly?undefined:onBoxUp} onTouchMove={readOnly?undefined:onBoxMove} onTouchEnd={readOnly?undefined:onBoxUp} style={{position:"relative",borderRadius:10,height:H,overflow:"hidden",background:"#4B4B4B",cursor:mode==="num"?"copy":"default"}}>
+{label&&<div style={{position:"absolute",top:6,left:6,zIndex:7,background:"rgba(18,180,166,0.92)",color:"#fff",fontSize:10,fontWeight:800,letterSpacing:.3,padding:"3px 8px",borderRadius:7,boxShadow:"0 1px 4px rgba(0,0,0,0.3)",pointerEvents:"none"}}>{label}</div>}
+{!bg&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"#aaa",fontSize:12,pointerEvents:"none"}}>매장 도면 (사진 · 그리기 · 요소 · 텍스트 · 강도)</div>}
+{bg&&<div style={{position:"absolute",left:0,top:0,width:`${bgW}%`,height:`${bgH}%`,zIndex:0}}>
+<img src={bg} alt="" style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/></div>}
+{bg&&!readOnly&&<span onClick={e=>{e.stopPropagation();setBg(null);}} style={{position:"absolute",top:2,left:`calc(${bgW}% - 22px)`,zIndex:6,width:20,height:20,borderRadius:"50%",background:"rgba(34,34,34,0.85)",color:"#fff",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>✕</span>}
+{bg&&!readOnly&&<span onMouseDown={e=>{e.stopPropagation();resizeRef.current=true;}} onTouchStart={e=>{e.stopPropagation();resizeRef.current=true;}} onClick={e=>e.stopPropagation()} title="크기 조절" style={{position:"absolute",left:`calc(${bgW}% - 18px)`,top:`calc(${bgH}% - 18px)`,zIndex:6,width:20,height:20,borderRadius:5,background:C.blue,color:"#fff",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"nwse-resize",boxShadow:"0 1px 4px rgba(0,0,0,0.4)",touchAction:"none"}}>◢</span>}
+<canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",zIndex:1,touchAction:"none",pointerEvents:(mode==="pen"||mode==="erase")?"auto":"none",cursor:mode==="pen"?PEN_CURSOR:mode==="erase"?ERASE_CURSOR:"default"}} onMouseDown={cDown} onMouseMove={cMove} onMouseUp={cUp} onMouseLeave={cUp} onTouchStart={cDown} onTouchMove={cMove} onTouchEnd={cUp}/>
+{items.map((it,i)=>(<div key={i} onClickCapture={e=>{if(mode==="erase"){e.stopPropagation();setItems(a=>a.filter((_,j)=>j!==i));}}} style={{position:"absolute",left:it.x,top:it.y,zIndex:2,display:"flex",alignItems:"flex-start",gap:1,pointerEvents:readOnly?"none":((mode==="pen"||mode==="num")?"none":"auto"),cursor:mode==="erase"?ERASE_CURSOR:"default"}}>
+{it.type==="el"
+?<span onMouseDown={e=>startDrag(e,i)} onTouchStart={e=>startDrag(e,i)} style={{position:"relative",display:"inline-flex",cursor:mode==="erase"?ERASE_CURSOR:"move",lineHeight:1}}>
+<span style={{display:"inline-flex",transform:`rotate(${it.rot||0}deg)`,transformOrigin:"center"}}>{isShape(it.icon)?deskShape(it.icon,it.scale||1):<span style={{fontSize:28*(it.scale||1)}}>{it.icon}</span>}</span>
+{(mode===""||mode==="panel")&&!readOnly&&<span onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setItems(a=>a.map((x,j)=>j===i?{...x,rot:((x.rot||0)+90)%360}:x));}} title="회전 (클릭 시 90°씩)" style={{position:"absolute",left:-9,top:-9,width:15,height:15,borderRadius:"50%",background:C.mintD,color:"#fff",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.4)",touchAction:"none",zIndex:3}}>↻</span>}
+{(mode===""||mode==="panel")&&!readOnly&&<span onMouseDown={e=>{e.stopPropagation();const t=e.touches&&e.touches[0]?e.touches[0]:e;elResizeRef.current={i,sx:t.clientX,sc:it.scale||1};}} onTouchStart={e=>{e.stopPropagation();const t=e.touches[0];elResizeRef.current={i,sx:t.clientX,sc:it.scale||1};}} onClick={e=>e.stopPropagation()} title="크기 조절" style={{position:"absolute",right:-9,bottom:-9,width:15,height:15,borderRadius:4,background:C.blue,color:"#fff",fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"nwse-resize",boxShadow:"0 1px 3px rgba(0,0,0,0.4)",touchAction:"none",zIndex:3}}>◢</span>}</span>
+:<div style={{display:"flex",alignItems:"flex-start"}}><span onMouseDown={e=>startDrag(e,i)} onTouchStart={e=>startDrag(e,i)} title="이동" style={{cursor:mode==="erase"?ERASE_CURSOR:"move",fontSize:13,color:C.blueD,padding:"2px 2px 0 0"}}>⠿</span>
+<input value={it.text} readOnly={mode==="erase"||readOnly} onChange={e=>setItems(a=>a.map((x,j)=>j===i?{...x,text:e.target.value}:x))} onMouseDown={e=>e.stopPropagation()} style={{width:80,fontSize:12,fontWeight:700,color:C.ink,background:"rgba(255,255,255,0.92)",border:`1px solid ${C.line}`,borderRadius:6,padding:"3px 5px",outline:"none"}}/></div>}
+{!readOnly&&<span onClick={e=>{e.stopPropagation();setItems(a=>a.filter((_,j)=>j!==i));}} style={{width:15,height:15,borderRadius:"50%",background:C.red,color:"#fff",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginLeft:1}}>✕</span>}</div>))}
+{nums.map((nm,i)=>(<div key={i} onClickCapture={e=>{if(mode==="erase"){e.stopPropagation();setNums(a=>a.filter((_,j)=>j!==i));}}} style={{position:"absolute",left:nm.x,top:nm.y,zIndex:2,display:"flex",alignItems:"flex-start",pointerEvents:readOnly?"none":((mode==="pen"||mode==="num")?"none":"auto"),cursor:mode==="erase"?ERASE_CURSOR:"default"}}>
+<span style={{width:22,height:22,borderRadius:"50%",background:C.blue,color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}>{nm.n}</span>
+{!readOnly&&<span onClick={e=>{e.stopPropagation();setNums(a=>a.filter((_,j)=>j!==i));}} style={{width:14,height:14,borderRadius:"50%",background:"#222",color:"#fff",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginLeft:-4,marginTop:-2}}>✕</span>}</div>))}
+</div></div>);
+}
+// [신규] Scent Mapping : 도면 여러 장 관리
+function ScentMaps({company,readOnly}){
+const key=company||"기본";
+const[n,setN]=useState(readOnly?(MAP_COUNT[key]||1):(MAP_COUNT[key]||1));
+useEffect(()=>{if(!readOnly)MAP_COUNT[key]=n;},[key,n,readOnly]);
+return(<React.Fragment>
+{Array.from({length:n},(_,i)=><div key={i} style={{marginBottom:12}}>
+<div style={{fontSize:11,fontWeight:800,color:C.mintD,marginBottom:5,display:"flex",alignItems:"center",gap:5}}><span style={{width:14,height:14,borderRadius:4,background:C.mintD,color:"#fff",fontSize:9,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>📍</span>Scent Map {i+1}</div>
+<div style={{...S.card,padding:10,marginBottom:0}}><ZoneMap storeKey={key+"|"+i} readOnly={readOnly}/></div></div>)}
+{!readOnly&&<AddBtn label="도면 추가" onClick={()=>setN(n+1)}/>}
+</React.Fragment>);
+}
+// [신규] 타겟 공간 블록 (타겟 공간 1,2,3... 각각 자체 상태)
+function SpaceBlock({idx,onDel}){
+const[scent,setScent]=useState(3);
+return(<div style={{...S.card,background:C.bg,position:"relative",padding:"13px 16px"}}>
+{onDel&&<span onClick={onDel} style={{position:"absolute",top:11,right:14,fontSize:12,fontWeight:700,color:C.red,cursor:"pointer",zIndex:2}}>🗑 삭제</span>}
+<Field label={`타겟 공간 ${idx}`}/>
+<div style={S.row}><Drop label="설치 장비" options={DEVICES} half/><Field label="수량" num half/></div>
+<Field label="설치 위치"/>
+<div style={S.fld}><span style={S.lbl}>사진 기록 📷</span><PhotoGrid/></div>
+<div style={{marginTop:8}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={S.lbl}>발향 강도</span><span style={{fontWeight:800,fontSize:13,color:C.mintD}}>{scent}단계</span></div>
+<input type="range" min="1" max="7" step="1" value={scent} onChange={e=>setScent(+e.target.value)} style={{width:"100%"}}/>
+<div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
+{[["1","미발향"],["2","매우 약함"],["3","조금 약함"],["4","보통"],["5","다소 강함"],["6","강함"],["7","매우 강함"]].map(([n,lb])=><div key={n} style={{flex:1,textAlign:"center",fontSize:12,fontWeight:scent===+n?800:400,color:scent===+n?C.mintD:C.sub}}><div>{n}</div><div style={{marginTop:2}}>{lb.split(" ").map((w,wi)=><div key={wi} style={{lineHeight:1.2}}>{w}</div>)}</div></div>)}</div></div>
+</div>);
+}
+// [신규] 기타 공간 블록 (판매대 / 인/익스테리어 · 사진)
+function EtcBlock({idx,onDel}){
+return(<div style={{...S.card,background:C.bg,position:"relative",padding:"13px 16px"}}>
+{onDel&&<span onClick={onDel} style={{position:"absolute",top:11,right:14,fontSize:12,fontWeight:700,color:C.red,cursor:"pointer",zIndex:2}}>🗑 삭제</span>}
+<Drop label="기타 공간" ph="선택하세요" options={["판매대","인테리어","익스테리어"]}/>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>사진 기록 📷</span><PhotoGrid/></div>
+</div>);
+}
+// ===== 서비스 방문일지 (내부용) =====
+function Visit({nav,params,store}){
+const[purpose,setPurpose]=useState("정기 점검");
+const[abn,setAbn]=useState({none:true,ext:false,noise:false,leak:false,etc:false});
+const[openInstall,setOpenInstall]=useState(true);
+const[spaces,setSpaces]=useState([1]);
+const[etcSpaces,setEtcSpaces]=useState([]);
+const[critHist,setCritHist]=useState(false);
+const[inspectDone,setInspectDone]=useState(false);
+const[warn,setWarn]=useState(false);
+const[scent,setScent]=useState(3);
+const[sev,setSev]=useState("단순");
+const today=new Date().toISOString().slice(0,10);
+const[visitDate,setVisitDate]=useState(today);
+const[genDone,setGenDone]=useState(false);
+const[surveyView,setSurveyView]=useState(null);
+const[custOpen,setCustOpen]=useState(false);
+const[cpop,setCpop]=useState(false);const[cdpop,setCdpop]=useState(false);
+const[cautionPop,setCautionPop]=useState(false);const[caution,setCaution]=useState("");
+const[scentPop,setScentPop]=useState(false);const[etcText,setEtcText]=useState("");
+const[svcStaff,setSvcStaff]=useState(LOGGED_IN.name);
+const idRef=useRef(5);
+const[comments,setComments]=useState([{id:1,text:"",cust:false,hist:0},{id:2,text:"",cust:false,hist:0},{id:3,text:"",cust:false,hist:0},{id:4,text:"",cust:false,hist:0}]);
+const[savedMsg,setSavedMsg]=useState(false);const[scentAsk,setScentAsk]=useState(false);
+const cidOf=(c)=>"cmt-"+(p||"미지정")+"-"+c.id;
+const upC=(i,k,v)=>setComments(cs=>cs.map((c,j)=>j===i?{...c,[k]:v}:c));
+const cycleHist=(i)=>setComments(cs=>cs.map((c,j)=>j===i?{...c,hist:(c.hist+1)%4}:c));
+const addC=()=>setComments(cs=>[...cs,{id:idRef.current++,text:"",cust:false,hist:0}]);
+const delC=i=>setComments(cs=>{if(cs.length<=1)return cs;const c=cs[i];if(c)opRemove(cidOf(c));return cs.filter((_,j)=>j!==i);});
+const saveVisit=()=>{comments.forEach(c=>{const cid=cidOf(c);if(c.hist>0){const lv=HIST_LV[c.hist];opUpsert({id:cid,src:"comment",date:visitDate||today,staff:svcStaff,company:p||"미지정",cat:"내부 코멘트",text:c.text||"(내용 없음)",lv:c.hist,sev:lv.sev,color:lv.color,bg:lv.bg});}else opRemove(cid);});const co=p||"미지정";CUST_EXTRACT[co]=comments.filter(c=>c.cust&&(c.text||"").trim()).map(c=>({text:c.text.trim()}));VISIT_SNAP[co]={purpose,visitDate:visitDate||today,svcStaff,svcPhone};SAVED_VISITS[co]={...(SAVED_VISITS[co]||{}),internal:true,date:visitDate||today};nav("visitgen",{p});};
+const svcPhone=(STAFF.find(s=>s.name===svcStaff)||{}).phone||"";
+const tg=k=>setAbn(p=>{if(k==="none"){return p.none?{...p,none:false}:{none:true,ext:false,noise:false,leak:false,etc:false};}if(p.none)return p;return{...p,[k]:!p[k]};});
+const p=params&&params.p?params.p:"";
+const d=(INSTALL_DATA[p]&&INSTALL_DATA[p].f)||{};
+const mgrHist=(INSTALL_DATA[p]&&INSTALL_DATA[p].mgrHist)||[];
+const ABN_LABELS={ext:"외관 파손",noise:"소음/진동",leak:"누유",etc:"기타 이상"};
+const collectIssues=()=>Object.keys(ABN_LABELS).filter(k=>abn[k]).map(k=>ABN_LABELS[k]);
+useEffect(()=>{
+const allChecked=Object.values(abn).every(Boolean);
+if((inspectDone||allChecked)&&!genDone&&store){
+const issues=collectIssues();
+store.addInspection({id:Date.now(),company:p||"미지정",visitDate:visitDate||today,nextDate:addOneMonth(visitDate||today),issues,sev});
+setGenDone(true);}
+},[inspectDone,abn,visitDate]);
+const myoSurveys=store?store.surveys.filter(s=>s.company===p):[];
+const extract=()=>{inspectDone?nav("customer",{p}):setWarn(true);};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<Tabs nav={nav} cur="visit" p={p}/>
+<div style={S.body}>
+<span style={S.h1}>서비스 방문일지(내부)</span>
+<div style={{...S.sec,justifyContent:"space-between"}}>
+<span>🏢 고객사 / 사업장</span>
+<span onClick={()=>setCustOpen(v=>!v)} style={{fontSize:11,color:C.blue,fontWeight:700,cursor:"pointer"}}>{custOpen?"▲ 접기":"▼ 열기"}</span></div>
+<div style={{...S.fld,position:"relative"}}>
+<span style={{...S.lbl,display:"inline-flex",alignItems:"center",gap:6}}>고객사명 <RefBtn onClick={()=>{setCpop(v=>!v);setCdpop(false);setScentPop(false);}}/> <StarBtn name={p||"미지정"} size={19}/></span>
+<input style={S.inp} readOnly value={d.cust||p||""}/>
+{cpop&&<AnchoredBox title="주소 / 주차 / 서비스 절차" onClose={()=>setCpop(false)}>
+<div style={S.fld}><span style={S.lbl}>사업장 주소</span><input style={{...S.inp,background:C.bg}} readOnly value={d.addr||""}/></div>
+<div style={S.fld}><span style={S.lbl}>주차 정보</span><input style={{...S.inp,background:C.bg}} readOnly value={d.parking||""}/></div>
+<div style={S.fld}><span style={S.lbl}>서비스 절차</span><textarea readOnly value={d.proc||""} style={{...S.inp,height:70,resize:"none",background:C.bg}}/></div>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>비고</span><textarea readOnly value={d.remark||""} style={{...S.inp,height:64,resize:"none",background:C.bg}}/></div>
+<div style={{fontSize:11,color:C.sub,marginTop:8}}>※ 설치 현황에 기록된 정보가 연동됩니다.</div></AnchoredBox>}
+</div>
+{custOpen&&<>
+<div style={S.row}>
+<div style={{flex:1,position:"relative"}}>
+<span style={{...S.lbl,display:"inline-flex",flexWrap:"wrap",alignItems:"flex-end",gap:6,minHeight:34,marginBottom:5,lineHeight:1.25}}>고객사 담당자 이름 <RefBtn onClick={()=>{setCdpop(v=>!v);setCpop(false);setScentPop(false);}}/></span>
+<input style={S.inp} readOnly value={d.mgr||""}/>
+{cdpop&&<AnchoredBox title="담당자 특징 / 성향 / 변경 이력" onClose={()=>setCdpop(false)} w="320px" anchor="left">
+<div style={S.fld}><span style={S.lbl}>특징 / 성향 메모</span><textarea readOnly value={d.mgrMemo||""} style={{...S.inp,height:110,resize:"none",background:C.bg}}/></div>
+<div style={{...S.sec,marginTop:2}}>🕘 담당자 변경 이력</div>
+<div style={{...S.card,background:C.bg,marginBottom:0}}>
+{mgrHist.length===0?<div style={{fontSize:13,color:C.sub}}>등록된 변경 이력이 없습니다.</div>
+:mgrHist.map((r,i)=><div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<mgrHist.length-1?`1px solid ${C.line}`:"none"}}><span style={{fontSize:12,color:C.sub,fontWeight:700,minWidth:120}}>{r.time}</span><span style={{fontSize:13}}>{r.name}</span></div>)}</div>
+</AnchoredBox>}
+</div>
+<div style={{flex:1}}><span style={{...S.lbl,display:"flex",alignItems:"flex-end",minHeight:34,marginBottom:5,lineHeight:1.25}}>소속 부서</span><input style={S.inp} readOnly value={d.dept||""}/></div>
+</div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>이메일</span><input style={S.inp} readOnly value={d.mgrEmail||""}/></div>
+<div style={{flex:1}}><span style={S.lbl}>연락처</span><div style={{position:"relative"}}><input style={S.inp} readOnly value={d.mgrPhone||""}/><span style={{position:"absolute",right:10,top:9,fontSize:15,pointerEvents:"none"}}>📞</span></div></div>
+</div>
+<div style={{fontSize:11,color:C.sub,marginBottom:4}}>※ 설치 현황에 기록된 고객사 정보가 자동으로 연동됩니다.</div></>}
+<div style={S.sec}>📅 방문 일자</div>
+<div style={S.fld}><span style={S.lbl}>방문 일시</span><input type="date" value={visitDate} onChange={e=>setVisitDate(e.target.value)} style={S.inp}/></div>
+<div style={S.sec}>👤 서비스 담당자</div>
+<div style={{fontSize:11,color:C.sub,marginBottom:6}}>로그인 담당자 기준 자동 입력 · 필요 시 변경</div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>이름</span>
+<div style={{position:"relative"}}>
+<select value={svcStaff} onChange={e=>setSvcStaff(e.target.value)} style={{...S.inp,cursor:"pointer",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",paddingRight:30}}>{STAFF.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select>
+<DArrow/></div></div>
+<div style={{flex:1}}><span style={S.lbl}>연락처 (자동)</span>
+<input readOnly value={svcPhone} style={{...S.inp,background:C.blueL,color:C.ink}}/></div></div>
+<div style={S.sec}>🚩 방문 목적</div>
+<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+{["정기 점검","A/S","기타"].map(x=><span key={x} style={S.pill(purpose===x)} onClick={()=>setPurpose(x)}>{x}</span>)}
+<span style={{flex:1}}/>
+<div style={{position:"relative",flex:"none"}}>
+<button onClick={()=>setCautionPop(v=>!v)} style={{padding:"8px 14px",borderRadius:20,fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:C.orange,color:C.white,whiteSpace:"nowrap"}}>주의사항</button>
+{cautionPop&&<AnchoredBox title="주의사항 기록 / 편집" onClose={()=>setCautionPop(false)} w="280px" anchor="right">
+<textarea value={caution} onChange={e=>setCaution(e.target.value)} style={{...S.inp,height:110,resize:"none"}} placeholder="방문 시 주의사항을 입력하세요."/></AnchoredBox>}
+</div></div>
+{(purpose==="A/S"||purpose==="기타")&&<>
+<div style={S.fld}><span style={S.lbl}>방문 목적</span><textarea style={{...S.inp,height:112,resize:"none"}} placeholder="방문 목적을 입력하세요."/></div>
+<div style={S.fld}><span style={S.lbl}>대응</span><textarea style={{...S.inp,height:112,resize:"none"}} placeholder="대응 내용을 입력하세요."/></div></>}
+{purpose==="정기 점검"&&<>
+<div style={S.sec}>🧴 향기명</div>
+<div style={{position:"relative",marginBottom:8}}><input style={{...S.inp,paddingRight:46}} readOnly value={d.scent||""}/>
+<span onClick={()=>{setScentPop(v=>!v);setCpop(false);setCdpop(false);}} title="향기 정보 기록표" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:13,background:"linear-gradient(180deg,#FFFFFF 0%,#E8F6F3 100%)",color:C.mintD,border:`1px solid ${C.mint}`,borderRadius:8,padding:"3px 7px",boxShadow:"0 2px 6px rgba(18,184,169,0.25)"}}>📖</span>
+{scentPop&&<AnchoredBox title="향기 정보 기록표" onClose={()=>setScentPop(false)} w="300px" anchor="right">
+<div style={{fontSize:12.5,lineHeight:1.9}}>
+<div><b>향기명</b> : {d.scent||"-"}</div>
+<div><b>노트</b> : {d.scentNote||"-"}</div>
+<div><b>향기 설명</b> : {d.scentDesc||"-"}</div></div>
+<div style={{fontSize:11,color:C.sub,marginTop:8}}>※ 설치 현황에 기록된 향기 정보가 연동됩니다.</div></AnchoredBox>}</div>
+<div style={{...S.sec,justifyContent:"space-between",cursor:"pointer"}} onClick={()=>setOpenInstall(!openInstall)}>
+<span>⬇ 설치 정보</span><span style={{color:C.sub,fontWeight:600}}>{openInstall?"▲ 접기":"▼ 열기"}</span></div>
+{openInstall&&<>
+{spaces.map((sid,si)=><SpaceBlock key={sid} idx={si+1} onDel={spaces.length>1?()=>setSpaces(a=>a.filter(x=>x!==sid)):null}/>)}
+{etcSpaces.map((eid,ei)=><EtcBlock key={"e"+eid} idx={ei+1} onDel={()=>setEtcSpaces(a=>a.filter(x=>x!==eid))}/>)}
+<div style={{display:"flex",gap:8}}>
+<div style={{flex:2}}><AddBtn label="타겟 공간 추가" onClick={()=>setSpaces(a=>[...a,(a.length?Math.max(...a):0)+1])}/></div>
+<div style={{flex:1}}><AddBtn label="기타" onClick={()=>setEtcSpaces(a=>[...a,(a.length?Math.max(...a):0)+1])}/></div></div>
+</>}
+<div style={S.sec}>⚠ 이상 여부</div>
+<div style={{...S.card,padding:"14px"}}>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"11px 10px"}}>
+{[["none","이상 없음"],["ext","외관 파손"],["noise","소음 / 진동"],["leak","누유"],["etc","기타"]].map(([k,l])=>{const dis=abn.none&&k!=="none";return(
+<div key={k} style={{display:"flex",alignItems:"center",gap:8,cursor:dis?"not-allowed":"pointer",opacity:dis?0.4:1}} onClick={()=>tg(k)}>
+<div style={{width:20,height:20,borderRadius:5,border:abn[k]?"none":`2px solid #CBD5E1`,background:abn[k]?C.blue:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+{abn[k]&&<span style={{color:"#fff",fontSize:12}}>✓</span>}</div><span style={{fontSize:13}}>{l}</span></div>);})}</div>
+{abn.etc&&<div style={{marginTop:12}}><textarea value={etcText} onChange={e=>setEtcText(e.target.value)} placeholder="기타 이상 내용을 직접 입력하세요." style={{...S.inp,height:112,resize:"none"}}/></div>}</div>
+<div style={S.sec}>📍 Scent Mapping</div>
+<ScentMaps company={p||"미지정"}/>
+<div style={S.sec}>📝 내부 코멘트</div>
+<div style={{...S.card,padding:"14px 14px 12px",minHeight:186}}>
+<div style={{display:"flex",alignItems:"flex-end",justifyContent:"flex-end",gap:0,marginBottom:10}}>
+<div style={{width:44,textAlign:"center",fontSize:10,fontWeight:800,color:C.blueD,whiteSpace:"nowrap"}}>고객용</div>
+<div style={{width:44,textAlign:"center",fontSize:10,fontWeight:800,color:C.yellow,whiteSpace:"nowrap"}}>히스토리</div>
+<div style={{width:16}}/></div>
+{comments.map((c,i)=>(
+<div key={i} style={{display:"flex",alignItems:"center",gap:0,marginBottom:14}}>
+<textarea rows={1} value={c.text} onChange={e=>upC(i,"text",e.target.value)} onInput={e=>{e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}} placeholder="내부 코멘트를 입력하세요." style={{flex:1,minWidth:0,border:"none",borderBottom:`1px dashed ${C.sub}`,outline:"none",fontSize:14,lineHeight:1.5,padding:"6px 2px",background:"transparent",color:C.ink,boxSizing:"border-box",resize:"none",overflow:"hidden",fontFamily:"inherit"}}/>
+<div style={{width:44,display:"flex",justifyContent:"center"}}>
+<span onClick={()=>upC(i,"cust",!c.cust)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${c.cust?C.blue:C.line}`,background:c.cust?C.blue:C.white,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,cursor:"pointer",flexShrink:0}}>{c.cust?"✓":""}</span></div>
+<div style={{width:44,display:"flex",justifyContent:"center"}}>
+<span onClick={()=>cycleHist(i)} title="클릭: 단순→지속 케어→크리티컬→해제" style={{width:22,height:22,borderRadius:6,border:`2px solid ${c.hist?HIST_LV[c.hist].color:C.line}`,background:c.hist?HIST_LV[c.hist].color:C.white,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,cursor:"pointer",flexShrink:0}}>{c.hist?"✓":""}</span></div>
+<span onClick={()=>delC(i)} style={{width:16,textAlign:"center",color:C.sub,cursor:"pointer",fontSize:16}}>×</span></div>
+))}
+<div onClick={addC} style={{marginTop:2,fontSize:12,fontWeight:800,color:C.blueD,cursor:"pointer"}}>＋ 줄 추가</div>
+<div style={{fontSize:9.5,color:C.sub,marginTop:8,lineHeight:1.5}}>※ 히스토리 체크는 클릭할수록 🟢단순 → 🟡지속 케어 → 🔴크리티컬 → 해제 순으로 바뀌며, 하단 「저장(고객용 추출)」을 누르면 고객사 운영 히스토리에 반영됩니다.</div>
+</div>
+</>}
+<div style={S.sec}>✍️ 영업 담당자 서명</div>
+<SignaturePad label="영업 담당자가 손으로 서명해 주세요"/>
+{genDone&&<div style={{...S.card,background:C.blueL,border:`1px solid #BFD7FE`,marginTop:14}}>
+<div style={{fontWeight:800,fontSize:13,color:C.blue,display:"flex",alignItems:"center",gap:6}}>🔔 점검 예정이 등록되었습니다</div>
+<div style={{fontSize:12,color:C.sub,marginTop:6}}>다음 방문 예정일: <b style={{color:C.ink}}>{addOneMonth(visitDate||today)}</b> (지난 방문 {visitDate||today} 기준 +1개월)</div>
+{collectIssues().length>0&&<div style={{fontSize:12,color:C.sub,marginTop:4}}>정비 참고 항목: {collectIssues().join(", ")}</div>}
+<div style={{fontSize:11,color:C.sub,marginTop:6}}>※ 홈 화면 「점검 예정」에서 확인할 수 있습니다.</div></div>}
+{purpose==="정기 점검"&&<><div style={S.sec}>📋 제출된 설문 ({myoSurveys.length})</div>
+{myoSurveys.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:12}}>제출된 설문이 없습니다. (설문 조사 화면에서 이 업체로 제출하면 여기에 표시됩니다)</div>
+:myoSurveys.map(s=>(<div key={s.id} onClick={()=>setSurveyView(s)} style={{...S.card,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<div><div style={{fontWeight:700,fontSize:13}}>📄 만족도 설문 결과</div><div style={{fontSize:11,color:C.sub,marginTop:2}}>{s.date} · 평균 {s.avg}점</div></div>
+<span style={{color:C.blue,fontWeight:700,fontSize:13}}>열기 ›</span></div>))}</>}
+<button onClick={()=>setScentAsk(true)} style={{...S.btn(C.blue),marginTop:18,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>💾 저장 (고객용 추출)</button>
+{savedMsg&&<div style={{...S.card,background:C.blueL,border:`1px solid #BFD7FE`,textAlign:"center",padding:16,marginTop:10}}>
+<div style={{fontSize:22}}>✅</div>
+<div style={{fontWeight:800,color:C.blue,marginTop:4}}>저장 완료</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>고객용 서방지가 추출되고, 체크한 내부 코멘트가 고객사 운영 히스토리에 반영되었습니다.</div></div>}
+{scentAsk&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:60,padding:20}} onClick={()=>setScentAsk(false)}>
+<div style={{background:C.white,borderRadius:18,padding:"24px 20px",width:"100%",maxWidth:320,boxShadow:"0 18px 44px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{textAlign:"center",fontSize:34}}>🧴</div>
+<div style={{textAlign:"center",fontWeight:800,fontSize:16,color:C.ink,marginTop:6}}>향료 운영 데이터를 입력하셨나요?</div>
+<div style={{fontSize:12,color:C.sub,textAlign:"center",marginTop:8,lineHeight:1.6}}>「예」를 누르면 고객용 서방지로 추출하고, 「아니오」를 누르면 향료 운영 데이터 입력 페이지로 이동합니다.</div>
+<div style={{display:"flex",gap:8,marginTop:18}}>
+<button style={{flex:1,border:`1.5px solid ${C.line}`,background:C.white,color:C.sub,borderRadius:11,padding:"12px 0",fontSize:14,fontWeight:800,cursor:"pointer"}} onClick={()=>{setScentAsk(false);nav("consume",{p});}}>아니오</button>
+<button style={{flex:1,border:"none",background:C.blue,color:"#fff",borderRadius:11,padding:"12px 0",fontSize:14,fontWeight:800,cursor:"pointer"}} onClick={()=>{setScentAsk(false);saveVisit();}}>예</button></div>
+</div></div>}
+</div>
+{surveyView&&<SurveyDoc data={surveyView} onClose={()=>setSurveyView(null)}/>}
+<Bottom active="log" nav={nav}/></div>);
+}
+// ===== 설문 결과 문서 =====
+function SurveyDoc({data,onClose}){
+return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:40}} onClick={onClose}>
+<div style={{background:C.white,width:"100%",borderTopLeftRadius:20,borderTopRightRadius:20,padding:"18px 18px 26px",maxHeight:"90%",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+<span style={{fontSize:16,fontWeight:800}}>설문 결과 문서</span>
+<div style={{display:"flex",gap:10,alignItems:"center"}}>
+<button onClick={()=>window.print()} style={{...S.gbtn,fontSize:12,padding:"6px 10px"}}>🖨 PDF 저장</button>
+<span style={{fontSize:22,cursor:"pointer"}} onClick={onClose}>✕</span></div></div>
+<div style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"18px 16px"}}>
+<div style={{textAlign:"center",borderBottom:`2px solid ${C.ink}`,paddingBottom:10,marginBottom:12}}>
+<div style={{fontSize:17,fontWeight:900}}>공간 향기 서비스 만족도 결과</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>㈜에프지인터내셔널</div></div>
+<table style={{width:"100%",fontSize:12,borderCollapse:"collapse",marginBottom:12}}><tbody>
+<tr><td style={{border:`1px solid ${C.line}`,padding:"6px 8px",background:C.bg,fontWeight:700,width:"30%"}}>업체명</td><td style={{border:`1px solid ${C.line}`,padding:"6px 8px"}}>{data.company}</td></tr>
+<tr><td style={{border:`1px solid ${C.line}`,padding:"6px 8px",background:C.bg,fontWeight:700}}>작성일</td><td style={{border:`1px solid ${C.line}`,padding:"6px 8px"}}>{data.date}</td></tr>
+<tr><td style={{border:`1px solid ${C.line}`,padding:"6px 8px",background:C.bg,fontWeight:700}}>종합 평균</td><td style={{border:`1px solid ${C.line}`,padding:"6px 8px",fontWeight:700,color:C.blue}}>{data.avg} / 5.0</td></tr>
+</tbody></table>
+<table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+<thead><tr><th style={{border:`1px solid ${C.line}`,padding:"6px 4px",background:C.dark,color:C.white}}>No</th><th style={{border:`1px solid ${C.line}`,padding:"6px 4px",background:C.dark,color:C.white,textAlign:"left"}}>문항</th><th style={{border:`1px solid ${C.line}`,padding:"6px 4px",background:C.dark,color:C.white}}>점수</th></tr></thead>
+<tbody>{SURVEY_QS.map(([cat,q],i)=>(
+<tr key={i}><td style={{border:`1px solid ${C.line}`,padding:"5px 4px",textAlign:"center"}}>{i+1}</td>
+<td style={{border:`1px solid ${C.line}`,padding:"5px 6px"}}><b>[{cat}]</b> {q}</td>
+<td style={{border:`1px solid ${C.line}`,padding:"5px 4px",textAlign:"center",fontWeight:700}}>{data.scores[i]?data.scores[i]:"-"}</td></tr>))}</tbody></table>
+{data.comment&&<div style={{marginTop:12,fontSize:12}}><div style={{fontWeight:700,marginBottom:4}}>주관식 의견</div>
+<div style={{border:`1px solid ${C.line}`,borderRadius:8,padding:"8px 10px",color:C.sub,lineHeight:1.5}}>{data.comment}</div></div>}
+</div>
+<button style={{...S.btn(),marginTop:14}} onClick={onClose}>닫기</button>
+</div></div>);
+}
+// ===== 고객용 서방지 =====
+function Customer({nav,params}){
+const[purpose,setPurpose]=useState("정기 방문");const[ok,setOk]=useState(false);const[sent,setSent]=useState(false);
+const[openDetail,setOpenDetail]=useState(false);
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button></div>
+<div style={S.body}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+<span style={{fontSize:23,fontWeight:900,lineHeight:1.2}}>서비스 방문일지<br/>(고객용)</span>
+<table style={{fontSize:8,borderCollapse:"collapse"}}><tbody>
+{[["발신","㈜에프지인터내셔널"],["등록번호","122-86-46974"],["주소","서울시 영등포구 영등포로20길 22-8"],["업태","도소매 외"],["전화","02-711-7895"]].map(([a,b])=>(
+<tr key={a}><td style={{border:"1px solid #ccc",padding:"2px 4px",background:C.bg,fontWeight:700}}>{a}</td><td style={{border:"1px solid #ccc",padding:"2px 4px"}}>{b}</td></tr>))}</tbody></table></div>
+<div style={S.sec}>🏢 고객사 / 사업장</div>
+<Field label="고객사명"/><Field label="담당자"/><Field label="연락처" phone/>
+<div style={{...S.sec,justifyContent:"space-between",cursor:"pointer"}} onClick={()=>setOpenDetail(!openDetail)}>
+<span>📅 방문 일자 / 서비스 담당자</span><span style={{color:C.sub,fontWeight:600}}>{openDetail?"▲ 접기":"▼ 열기"}</span></div>
+{openDetail&&<>
+<Field label="방문 일시" cal/>
+<div style={{fontSize:12,fontWeight:800,color:C.ink,margin:"6px 0 9px"}}>👤 서비스 담당자</div>
+<div style={S.row}><Field label="이름" half/><Field label="연락처" half/></div></>}
+<div style={S.sec}>🚩 방문 목적</div>
+<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+{["정기 방문","A/S","기타"].map(x=><span key={x} style={S.pill(purpose===x)} onClick={()=>setPurpose(x)}>{x}</span>)}
+<span style={{flex:1}}/>
+<button style={{...S.tab(C.dark,C.white),flex:"none",padding:"8px 12px"}}>서비스 절차</button>
+<button style={{...S.tab(C.orange,C.white),flex:"none",padding:"8px 12px"}}>주의사항</button></div>
+<div style={S.fld}><span style={S.lbl}>세부 목적 및 대응</span><textarea style={{...S.inp,height:60,resize:"none"}}/></div>
+{purpose==="A/S"&&<>
+<div style={S.sec}>📷 사진 업로드</div>
+<div style={{display:"flex",gap:8,marginBottom:6}}>
+{[0,1,2].map(i=><div key={i} style={{width:62,height:62,background:C.bg,border:`1.5px dashed ${C.line}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:C.sub,cursor:"pointer"}}>📷</div>)}
+<div style={{alignSelf:"center",color:C.sub}}>● ● ●</div></div>
+<div style={{fontSize:11,color:C.sub,marginBottom:4}}>※ A/S의 경우 이 페이지에서 작성을 마칩니다.</div></>}
+{purpose!=="A/S"&&<>
+<div style={S.sec}>📍 발향 구간표</div>
+<div style={{...S.card,padding:10}}>
+<div style={{marginBottom:8,fontSize:12,color:C.mintD,fontWeight:700}}>✏️ 그리기 펜 + 도구</div>
+<div style={{background:"#4B4B4B",borderRadius:10,height:140,display:"flex",alignItems:"center",justifyContent:"center",color:"#aaa",fontSize:12}}>매장 도면 (자동 연동)</div></div>
+<div style={S.sec}>⬇ 설치 정보</div>
+<div style={S.row}><Field label="기기 1" icon="🔤" half/><Field label="수량" num half/></div>
+<div style={S.row}><Field label="기기 2" icon="🔤" half/><Field label="수량" num half/></div></>}
+<div style={S.sec}>📝 서비스 내역 기록란</div>
+<textarea style={{...S.inp,height:80,resize:"none",marginBottom:12}}/>
+<div style={S.sec}>📝 고객 코멘트</div>
+<textarea style={{...S.inp,height:80,resize:"none"}}/>
+<div style={{display:"flex",alignItems:"center",gap:8,margin:"14px 0"}}>
+<div style={{width:20,height:20,borderRadius:5,border:ok?"none":"2px solid #CBD5E1",background:ok?C.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>setOk(!ok)}>{ok&&<span style={{color:"#fff",fontSize:12}}>✓</span>}</div>
+<span style={{fontSize:13}}>상기 내용을 확인했습니다</span></div>
+<div style={S.sec}>✍️ 고객사 담당자 서명</div>
+<SignaturePad label="고객사 담당자가 손으로 서명해 주세요"/>
+<button style={{...S.btn(C.green),marginTop:12}} onClick={()=>setSent("done")}>최종 확인 (이메일 자동 전송)</button>
+{sent==="done"&&<div style={{...S.card,background:C.greenL,border:`1.5px solid ${C.green}`,marginTop:10,textAlign:"center",padding:16}}>
+<div style={{fontSize:22}}>📧</div><div style={{fontWeight:700,color:C.green,marginTop:4}}>전송 완료</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>담당자 이메일로 자동 전송되었습니다.</div></div>}
+</div></div>);
+}
+// ===== 향료 소비량 =====
+function DeviceTabs(){
+const[sel,setSel]=useState("DB-20(G)");
+const devs=["DB-20(G)","Ecoscent R2T","＋ 직접 입력"];
+return(<div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+{devs.map(d=><span key={d} onClick={()=>setSel(d)} style={{padding:"8px 14px",borderRadius:20,fontSize:13,fontWeight:700,cursor:"pointer",
+border:sel===d?"none":`1px solid ${C.line}`,background:sel===d?C.yellow:C.white,color:sel===d?C.ink:C.sub}}>{d}</span>)}</div>);
+}
+const CONSUME_DEVS=["DB-20(G)","DB-20(W)","Compod","Aroslim 2G(B)","Aroslim 2G(S)","Aroslim 3G(B)","Aroslim 3G(S)","Aroscent(B)","Aroscent(W)","Ecoscent R1","Ecoscent R1T","Ecoscene R2","Ecoscent R2T"];
+// Aroslim 3G 발향 단계별 분사(ON)/정지(OFF) 시간(초) — 분은 초로 환산
+const AROSLIM_STAGES={1:{on:5,off:600},2:{on:5,off:180},3:{on:5,off:90},4:{on:5,off:55},5:{on:10,off:50},6:{on:16,off:43},7:{on:25,off:40},8:{on:33,off:33},9:{on:42,off:28},10:{on:46,off:20},11:{on:50,off:12},12:{on:55,off:5}};
+const selStyle={...S.inp,cursor:"pointer",fontFamily:"inherit",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",paddingRight:34};
+function ConsumeBlock({idx,onDel,bid}){
+const[dev,setDev]=useState(CONSUME_DEVS[0]);
+const[stage,setStage]=useState("");
+const[sprayM,setSprayM]=useState("");const[stopM,setStopM]=useState("");
+const[dh,setDh]=useState("");const[dd,setDd]=useState("");const[tsp,setTsp]=useState("");const[oil,setOil]=useState("");
+const[eh,setEh]=useState("");const[ed,setEd]=useState("");const[es,setEs]=useState("");const[ep,setEp]=useState("");
+const[edev,setEdev]=useState(CONSUME_DEVS[0]);const[estage,setEstage]=useState("");
+const is3G=dev==="Aroslim 3G(B)"||dev==="Aroslim 3G(S)";
+const fixed3=dev==="Compod"||dev==="DB-20(G)"||dev==="DB-20(W)";
+const st=is3G?AROSLIM_STAGES[stage]:null;
+const sprayAuto=(is3G&&!!st)||fixed3;
+const stopAuto=is3G&&!!st;
+const sprayVal=(is3G&&st)?String(st.on):(fixed3?"3":sprayM);
+const stopVal=(is3G&&st)?String(st.off):stopM;
+const eIs3G=edev==="Aroslim 3G(B)"||edev==="Aroslim 3G(S)";
+const eFixed3=edev==="Compod"||edev==="DB-20(G)"||edev==="DB-20(W)";
+const eSt=eIs3G?AROSLIM_STAGES[estage]:null;
+const eSprayAuto=(eIs3G&&!!eSt)||eFixed3;
+const eStopAuto=eIs3G&&!!eSt;
+const esVal=(eIs3G&&eSt)?String(eSt.on):(eFixed3?"3":es);
+const epVal=(eIs3G&&eSt)?String(eSt.off):ep;
+const badge=<span style={{fontSize:9,fontWeight:800,color:C.mintD,background:C.mintL,borderRadius:5,padding:"1px 5px",marginLeft:5}}>자동</span>;
+const numOr=(x)=>{const n=parseFloat(x);return isNaN(n)?null:n;};
+const spN=numOr(sprayVal),stN=numOr(stopVal),dhN=numOr(dh),ddN=numOr(dd),oilN=numOr(oil);
+const duty=(spN!=null&&stN!=null&&(spN+stN)>0)?spN/(spN+stN):null;
+const operSpray=(dhN!=null&&ddN!=null&&duty!=null)?dhN*3600*ddN*duty:null;
+const perSec=(operSpray&&operSpray>0&&oilN!=null)?oilN/operSpray:null;
+useEffect(()=>{if(bid!=null)CB_REPORT[bid]={dev,perSec};return ()=>{if(bid!=null)delete CB_REPORT[bid];};},[bid,dev,perSec]);
+const ehN=numOr(eh),edN=numOr(ed),esN=numOr(esVal),epN=numOr(epVal);
+const eDuty=(esN!=null&&epN!=null&&(esN+epN)>0)?esN/(esN+epN):null;
+const monthEst=(perSec!=null&&ehN!=null&&edN!=null&&eDuty!=null)?perSec*ehN*3600*eDuty*edN:null;
+const cinp={...S.inp};
+return(<div style={{...S.card,background:C.bg}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:12,fontWeight:800,color:C.blue}}>▎기기 {idx}</span>
+{onDel&&<span onClick={onDel} style={{fontSize:12,fontWeight:700,color:C.red,cursor:"pointer"}}>🗑 삭제</span>}</div>
+{is3G?
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>기기명</span>
+<div style={{position:"relative"}}><select value={dev} onChange={e=>setDev(e.target.value)} style={selStyle}>{CONSUME_DEVS.map(d=><option key={d} value={d}>{d}</option>)}</select><DArrow/></div></div>
+<div style={{flex:1}}><span style={S.lbl}>발향 단계</span>
+<div style={{position:"relative"}}><select value={stage} onChange={e=>setStage(e.target.value)} style={selStyle}><option value="">선택</option>{[1,2,3,4,5,6,7,8,9,10,11,12].map(n=><option key={n} value={String(n)}>{n}단계</option>)}</select><DArrow/></div></div>
+</div>
+:<div style={S.fld}><span style={S.lbl}>기기명</span>
+<div style={{position:"relative"}}><select value={dev} onChange={e=>setDev(e.target.value)} style={selStyle}>{CONSUME_DEVS.map(d=><option key={d} value={d}>{d}</option>)}</select><DArrow/></div></div>}
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>분사 시간(s){sprayAuto&&badge}</span>
+<input value={sprayVal} readOnly={sprayAuto} onChange={e=>setSprayM(e.target.value)} type="text" inputMode="numeric" style={cinp}/></div>
+<div style={{flex:1}}><span style={S.lbl}>정지 시간(s){stopAuto&&badge}</span>
+<input value={stopVal} readOnly={stopAuto} onChange={e=>setStopM(e.target.value)} type="text" inputMode="numeric" style={cinp}/></div></div>
+{is3G&&!stage&&<div style={{fontSize:10,color:C.sub,marginBottom:8}}>※ 발향 단계(1~12)를 선택하면 분사·정지 시간이 자동 입력됩니다.</div>}
+{fixed3&&<div style={{fontSize:10,color:C.sub,marginBottom:8}}>※ {dev}는 분사 시간이 3초로 자동 설정됩니다.</div>}
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>일일 가동 시간(h)</span><input value={dh} onChange={e=>setDh(e.target.value)} type="text" inputMode="decimal" style={cinp}/></div>
+<div style={{flex:1}}><span style={S.lbl}>가동 일수</span><input value={dd} onChange={e=>setDd(e.target.value)} type="text" inputMode="decimal" style={cinp}/></div></div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>총 분사 시간(s){badge}</span><input readOnly value={operSpray!=null?Math.round(operSpray).toLocaleString():""} placeholder="자동 계산" style={{...cinp,background:C.blueL,color:C.ink,fontWeight:700}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>총 오일 소비량(ml)</span><input value={oil} onChange={e=>setOil(e.target.value)} type="text" inputMode="decimal" style={cinp}/></div></div>
+<div style={{width:"100%",boxSizing:"border-box",background:perSec!=null?C.mintD:C.white,borderRadius:10,padding:"12px 14px",marginTop:2,marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${C.mint}`}}>
+<span style={{fontSize:12,color:perSec!=null?"#fff":C.mintD,fontWeight:700}}>초당 향료 소비량</span>
+<span style={{fontSize:18,fontWeight:900,color:perSec!=null?"#fff":C.mintD}}>{perSec!=null?(Math.round(perSec*10000)/10000).toString()+" ml/s":"–"}</span></div>
+<div style={{fontSize:10,color:C.sub,marginBottom:10,lineHeight:1.6}}>※ 총 분사 시간(s) = 일일 가동 시간 × 3600 × 가동 일수 × 분사÷(분사+정지) · 초당 향료 소비량(ml/s) = 총 오일 소비량(ml) ÷ 총 분사 시간</div>
+<div style={{...S.card,background:C.mintL,border:`1px solid ${C.mint}`,marginBottom:0}}>
+<div style={{fontSize:12.5,color:C.mintD,fontWeight:800,marginBottom:8}}>📈 월 예상 소비량 계산</div>
+{eIs3G?
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>기기명</span>
+<div style={{position:"relative"}}><select value={edev} onChange={e=>setEdev(e.target.value)} style={{...selStyle,background:C.white}}>{CONSUME_DEVS.map(d=><option key={d} value={d}>{d}</option>)}</select><DArrow/></div></div>
+<div style={{flex:1}}><span style={S.lbl}>발향 단계</span>
+<div style={{position:"relative"}}><select value={estage} onChange={e=>setEstage(e.target.value)} style={{...selStyle,background:C.white}}><option value="">선택</option>{[1,2,3,4,5,6,7,8,9,10,11,12].map(n=><option key={n} value={String(n)}>{n}단계</option>)}</select><DArrow/></div></div>
+</div>
+:<div style={S.fld}><span style={S.lbl}>기기명</span>
+<div style={{position:"relative"}}><select value={edev} onChange={e=>setEdev(e.target.value)} style={{...selStyle,background:C.white}}>{CONSUME_DEVS.map(d=><option key={d} value={d}>{d}</option>)}</select><DArrow/></div></div>}
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>분사 시간(s){eSprayAuto&&badge}</span><input value={esVal} readOnly={eSprayAuto} onChange={e=>setEs(e.target.value)} type="text" inputMode="decimal" style={{...cinp,background:C.white}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>정지 시간(s){eStopAuto&&badge}</span><input value={epVal} readOnly={eStopAuto} onChange={e=>setEp(e.target.value)} type="text" inputMode="decimal" style={{...cinp,background:C.white}}/></div></div>
+{eIs3G&&!estage&&<div style={{fontSize:10,color:C.sub,marginBottom:8}}>※ 발향 단계(1~12)를 선택하면 분사·정지 시간이 자동 입력됩니다.</div>}
+{eFixed3&&<div style={{fontSize:10,color:C.sub,marginBottom:8}}>※ {edev}는 분사 시간이 3초로 자동 설정됩니다.</div>}
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>일일 가동 시간(h)</span><input value={eh} onChange={e=>setEh(e.target.value)} type="text" inputMode="decimal" style={{...cinp,background:C.white}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>가동 일수</span><input value={ed} onChange={e=>setEd(e.target.value)} type="text" inputMode="decimal" style={{...cinp,background:C.white}}/></div></div>
+<div style={{width:"100%",boxSizing:"border-box",background:monthEst!=null?C.mintD:C.white,borderRadius:10,padding:"12px 14px",marginTop:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${C.mint}`}}>
+<span style={{fontSize:12,color:monthEst!=null?"#fff":C.mintD,fontWeight:700}}>월 예상 소비량</span>
+<span style={{fontSize:18,fontWeight:900,color:monthEst!=null?"#fff":C.mintD}}>{monthEst!=null?(Math.round(monthEst*100)/100).toLocaleString()+" ml/s":"–"}</span></div>
+{monthEst==null&&<div style={{fontSize:10,color:C.orange,marginTop:6,lineHeight:1.5}}>※ {perSec==null?"상단 실측값(분사·정지·일일 가동 시간·가동 일수·총 오일 소비량)을 입력하면 초당 소비량이 산출됩니다.":"기기·분사·정지·일일 가동 시간·가동 일수를 모두 입력하면 자동 계산됩니다."}</div>}
+<div style={{fontSize:10,color:C.sub,marginTop:8,lineHeight:1.6}}>※ 초당 향료 소비량 × 일일 가동 시간 × 3600 × 분사÷(분사+정지) × 가동 일수 기준 (초당 소비량 자동 산출 후 계산)</div></div>
+</div>);
+}
+function Consume({nav}){
+const now=new Date();
+const baseY=now.getFullYear(),baseM=now.getMonth();
+const months=Array.from({length:12},(_,i)=>({y:baseY,m:i,key:baseY+"-"+i}));
+const curKey=baseY+"-"+baseM;
+const label=(v)=>(v.m+1)+"월"+(v.m===baseM?" (당월)":"");
+const scrollRef=useRef(null);
+useEffect(()=>{const el=scrollRef.current;if(!el)return;const cell=el.querySelector(`[data-mk="${curKey}"]`);if(cell){const cr=cell.getBoundingClientRect(),er=el.getBoundingClientRect();el.scrollLeft+=cr.left-er.left-148;}},[]);
+const[cost,setCost]=useState("");
+const[sg,setSg]=useState("");
+const[unit,setUnit]=useState("ml");
+const[scentName,setScentName]=useState("");
+const[shipSaved,setShipSaved]=useState(false);
+const[cblocks,setCblocks]=useState([1]);
+const[vals,setVals]=useState({});
+const saveShip=()=>{const sc=scentName.trim()||"미지정 향기";for(let k=SHIP_DB.length-1;k>=0;k--){if(SHIP_DB[k].scent===sc)SHIP_DB.splice(k,1);}cblocks.forEach(id=>{const r=CB_REPORT[id];if(r&&r.perSec!=null)SHIP_DB.push({scent:sc,device:r.dev,perSec:r.perSec});});setShipSaved(true);};
+const setValRaw=(rk,mk,v)=>setVals(p=>({...p,[rk+"_"+mk]:v}));
+const getV=(rk,mk)=>{const n=parseFloat(vals[rk+"_"+mk]);return isNaN(n)?null:n;};
+const sgNum=parseFloat(sg);
+const useG=unit==="g"&&sgNum>0;
+const r2=(x)=>Math.round(x*100)/100;
+const toDisp=(ml)=>{if(ml==null)return "";return String(useG?r2(ml*sgNum):ml);};
+const fromDisp=(rk,mk,disp)=>{if(disp===""){setValRaw(rk,mk,"");return;}const n=parseFloat(disp);if(isNaN(n)){setValRaw(rk,mk,disp);return;}setValRaw(rk,mk,String(useG?r2(n/sgNum):n));};
+const prevOut=(mi)=>mi>0?getV("out",months[mi-1].key):null;
+const prevUseG=(mi)=>{const po=prevOut(mi),rc=getV("recover",months[mi].key);if(po==null&&rc==null)return null;return (po||0)-(rc||0);};
+const ratioVal=(rk,mi)=>{const mk=months[mi].key;const out=getV("out",mk),plan=getV("plan",mk),inn=getV("in",mk),rec=getV("recover",mk),po=prevOut(mi);
+if(rk==="r1")return (out!=null&&plan)?out/plan*100:null;
+if(rk==="r2")return (inn!=null&&out)?inn/out*100:null;
+if(rk==="r3")return (rec!=null&&po)?rec/po*100:null;return null;};
+const usageRows=[["plan","계획 출고량"],["out","출고량"],["fill","총진량"],["in","반입량"],["recover","회수량"],["prevUse","전월 사용량"]];
+const ratioRows=[["r1","실출고율"],["r2","반입률"],["r3","회수율"]];
+const calcAmt=(mk)=>{const q=getV("recover",mk),c=parseFloat(cost);if(q==null||isNaN(c)||!(sgNum>0))return null;return Math.round(q*sgNum*c);};
+const stkC={position:"sticky",left:0,zIndex:3,width:46,minWidth:46};
+const stkI={position:"sticky",left:46,zIndex:3,width:74,minWidth:74};
+const CUR="#FDE9C8";// 당월 강조 음영 (전월 사용량 행과 차별화된 톤)
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>향료 운영 데이터</span></div>
+<div style={S.body}>
+<div style={{...S.card,background:C.bg}}>
+<div style={{fontSize:12,fontWeight:800,color:C.blue,marginBottom:10}}>▎기본 정보</div>
+<div style={S.row}><Drop label="🏢 파트너사명" options={PARTNERS} half/>
+<div style={{flex:1}}><span style={S.lbl}>🧴 향기명</span><input value={scentName} onChange={e=>setScentName(e.target.value)} placeholder="향기명" style={S.inp}/></div></div>
+<div style={{display:"flex",gap:10}}>
+<div style={{flex:1}}><span style={S.lbl}>💧 향료 비중</span>
+<input style={S.inp} type="text" inputMode="decimal" value={sg} onChange={e=>setSg(e.target.value)} placeholder="예: 0.95"/></div>
+<div style={{flex:1}}><span style={S.lbl}>💰 향료 원가(원/g)</span>
+<input style={S.inp} type="text" inputMode="decimal" value={cost} onChange={e=>setCost(e.target.value)} placeholder="예: 120"/></div></div></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<span style={{fontSize:12,fontWeight:700,color:C.blue}}>📊 향료량 기록표</span>
+<div style={{display:"flex",alignItems:"center",gap:6}}>
+<span style={{fontSize:10,color:C.sub,fontWeight:700}}>단위</span>
+<div style={{display:"flex",border:`1px solid ${C.blue}`,borderRadius:8,overflow:"hidden"}}>
+{["ml","g"].map(u=><span key={u} onClick={()=>setUnit(u)} style={{padding:"4px 13px",fontSize:11,fontWeight:800,cursor:"pointer",background:unit===u?C.blue:C.white,color:unit===u?"#fff":C.sub}}>{u}</span>)}</div></div></div>
+{unit==="g"&&!(sgNum>0)&&<div style={{fontSize:10,color:C.red,marginBottom:6}}>※ g 표시는 향료 비중 입력 후 환산됩니다. 비중을 입력하세요.</div>}
+<div style={{fontSize:11,color:C.sub,marginBottom:6}}>← 1~12월 연간 기록 · 당월로 자동 이동 · 좌우 스크롤 →</div>
+<div ref={scrollRef} style={{overflowX:"auto",border:`1px solid ${C.line}`,borderRadius:10}}>
+<table style={{borderCollapse:"separate",borderSpacing:0,minWidth:940}}>
+<thead><tr><th style={{...S.th,position:"sticky",left:0,zIndex:4,width:46,minWidth:46}}>구분</th><th style={{...S.th,position:"sticky",left:46,zIndex:4,width:74,minWidth:74}}>항목</th>{months.map(v=><th key={v.key} data-mk={v.key} style={{...S.th,background:v.m===baseM?C.blue:C.dark}}>{label(v)}</th>)}</tr></thead>
+<tbody>
+{usageRows.map(([rk,lb],i)=>(
+<tr key={rk}>{i===0&&<td rowSpan={usageRows.length} style={{...S.td,...stkC,background:C.blueL,fontWeight:700}}>출고<br/>및<br/>사용량<br/>({unit})</td>}
+<td style={{...S.td,...stkI,textAlign:"center",background:C.bg}}>{lb}</td>
+{months.map((v,mi)=>{const cur=v.m===baseM;
+if(rk==="prevUse"){const g=prevUseG(mi);return(<td key={v.key} style={{...S.td,background:cur?CUR:C.bg}}><span style={{color:g==null?C.sub:C.ink,fontSize:11,fontWeight:g==null?400:700}}>{g==null?"-":toDisp(g)}</span></td>);}
+return(<td key={v.key} style={{...S.td,padding:0,background:cur?CUR:"transparent"}}>
+<input value={toDisp(getV(rk,v.key))} onChange={e=>fromDisp(rk,v.key,e.target.value)} type="text" inputMode="decimal" style={{width:56,border:"none",borderBottom:`1px solid ${C.line}`,textAlign:"center",fontSize:11,padding:"4px 2px",outline:"none",background:"transparent"}}/>
+</td>);})}</tr>))}
+{ratioRows.map(([rk,lb],i)=>(
+<tr key={rk}>{i===0&&<td rowSpan={ratioRows.length} style={{...S.td,...stkC,background:C.blueL,fontWeight:700}}>비율<br/>지표</td>}
+<td style={{...S.td,...stkI,textAlign:"center",background:C.bg}}>{lb}</td>
+{months.map((v,mi)=>{const rv=ratioVal(rk,mi);const cur=v.m===baseM;return(<td key={v.key} style={{...S.td,background:cur?CUR:"transparent"}}>{rv==null?<span style={{color:C.sub}}>-</span>:<span style={{color:C.blueD,fontWeight:700,fontSize:11}}>{rv.toFixed(1)}%</span>}</td>);})}</tr>))}
+<tr><td style={{...S.td,...stkC,background:C.blueL,fontWeight:700}}>금액 산정<br/>(원/g)</td>
+<td style={{...S.td,...stkI,textAlign:"center",background:C.bg}}>회수 비용 환산</td>
+{months.map((v,mi)=>{const a=calcAmt(v.key);const cur=v.m===baseM;return(<td key={v.key} style={{...S.td,background:a!=null?"#FFF7ED":(cur?CUR:"transparent")}}>{a!=null?<span style={{color:C.orange,fontSize:11,fontWeight:700}}>{a.toLocaleString()}</span>:<span style={{color:C.sub,fontSize:11}}>-</span>}</td>);})}</tr>
+</tbody></table></div>
+<div style={{fontSize:10,color:C.sub,marginTop:8,lineHeight:1.7}}>
+{["전월 사용량 = 전월 출고량 − 당월 회수량 (자동 기록)","실출고율 = 당월 출고량 ÷ 계획 출고량","반입률 = 당월 반입량 ÷ 당월 출고량","회수율 = 당월 회수량 ÷ 전월 출고량","회수 비용 환산 = 회수량 × 원가(원/g) (자동 계산)","ml ↔ g 은 향료 비중으로 자동 환산됩니다."].map((t,i)=><div key={i} style={{paddingLeft:12,textIndent:-12}}>※ {t}</div>)}
+</div>
+<div style={S.sec}>초당·월 예상 소비량</div>
+{cblocks.map((id,i)=><ConsumeBlock key={id} idx={i+1} bid={id} onDel={cblocks.length>1?()=>setCblocks(a=>a.filter(x=>x!==id)):null}/>)}
+<AddBtn label="기기 소비량 추가" onClick={()=>setCblocks(a=>[...a,(a.length?Math.max(...a):0)+1])}/>
+<button onClick={saveShip} style={{...S.btn(C.mintD),marginTop:8}}>💾 저장 (출고량 산정 반영)</button>
+{shipSaved&&<div style={{...S.card,background:C.blueL,border:`1px solid #BFD7FE`,textAlign:"center",padding:16,marginTop:10}}>
+<div style={{fontSize:22}}>📦</div><div style={{fontWeight:800,color:C.blue,marginTop:4}}>저장 완료</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>기기별 초당 소비량이 「향료 출고량 산정」에 반영되었습니다.</div>
+<button onClick={()=>nav("ship")} style={{...S.btn(C.blue),marginTop:10}}>향료 출고량 산정 열기 ›</button></div>}
+</div>
+<Bottom active="consume" nav={nav}/></div>);
+}
+// ===== 히스토리 =====
+function History({nav}){
+const cats=["장비 이상","장비 파손/추락","향료 누유/오염","공조 운영 변경","장비 이동/재설치","설치 환경 변경","예방 정비/점검","고객 요청 사항","민원","특이사항/기타"];
+const[ft,setFt]=useState("전체");
+const[critOnly,setCritOnly]=useState(false);
+const[logs,setLogs]=useState([
+{date:"2026.04.05",title:"기기 추락/파손 (크리티컬)",desc:"기기 고정부 탈락으로 추락 발생. 외관 파손 및 오일 누유. 즉시 교체 진행.",crit:true,type:"장비 파손/추락"},
+{date:"2026.03.12",title:"공조 운영 변경",desc:"매장 인테리어 변경으로 인한 발향 위치 조정.",crit:false,type:"공조 운영 변경"},
+{date:"2026.02.01",title:"향료 오염/이물질",desc:"필터 점검 중 이물질 발견. 세척 완료.",crit:false,type:"향료 누유/오염"}]);
+const today=new Date().toISOString().slice(0,10);
+const[form,setForm]=useState(false);
+const[nCat,setNCat]=useState("");const[nSev,setNSev]=useState("단순");const[nDesc,setNDesc]=useState("");const[nDate,setNDate]=useState(today);const[nStaff,setNStaff]=useState(LOGGED_IN.name);
+const idRef=useRef(1);const[tick,setTick]=useState(0);
+const LVOF={"단순":1,"지속 케어":2,"크리티컬":3};
+const valid=nCat&&nDesc.trim();
+const save=()=>{if(!valid)return;const lvn=LVOF[nSev];const lv=HIST_LV[lvn];opUpsert({id:"fh-"+(idRef.current++),src:"form",date:(nDate||today).replace(/-/g,"."),staff:nStaff,company:"",cat:nCat,text:nDesc.trim(),lv:lvn,sev:lv.sev,color:lv.color,bg:lv.bg});setNCat("");setNDesc("");setNSev("단순");setNDate(today);setForm(false);setTick(t=>t+1);};
+const fbar=["전체",...cats];
+const demoList=logs.map(l=>({date:l.date,title:l.title,desc:l.desc,type:l.type,lv:l.crit?3:1,sev:l.crit?"크리티컬":"단순",staff:""}));
+const opList=OP_HISTORY.map(e=>({date:e.date,title:e.cat,desc:e.text,type:e.cat,lv:e.lv,sev:e.sev,staff:e.staff}));
+let shown=[...opList,...demoList];
+if(ft!=="전체")shown=shown.filter(l=>l.type===ft);
+if(critOnly)shown=shown.filter(l=>l.lv===3);
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>고객사별 히스토리</span></div>
+<div style={S.body}>
+<button onClick={()=>setForm(!form)} style={{width:"100%",border:"none",background:form?C.sub:C.blue,color:C.white,borderRadius:11,padding:"12px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:12}}>{form?"✕ 작성 취소":"＋ 히스토리 작성"}</button>
+{form&&<div style={S.card}>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>날짜</span><input type="date" value={nDate} onChange={e=>setNDate(e.target.value)} style={S.inp}/></div>
+<div style={{flex:1}}><span style={S.lbl}>담당자</span><input value={nStaff} onChange={e=>setNStaff(e.target.value)} placeholder="담당자" style={S.inp}/></div></div>
+<div style={S.fld}><span style={S.lbl}>카테고리</span>
+<div style={{position:"relative"}}>
+<select value={nCat} onChange={e=>setNCat(e.target.value)} style={{...S.inp,cursor:"pointer",fontFamily:"inherit",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",paddingRight:30}}>
+<option value="">카테고리 선택</option>{cats.map(c=><option key={c} value={c}>{c}</option>)}</select>
+<DArrow/></div></div>
+<div style={S.fld}><span style={S.lbl}>이슈 중요도</span>
+<div style={{display:"flex",gap:6}}>
+{[["단순",C.mintD,C.mintL],["지속 케어",C.yellow,C.yellowL],["크리티컬",C.red,C.redL]].map(([lb,col,bg])=><span key={lb} onClick={()=>setNSev(lb)} style={{flex:1,textAlign:"center",padding:"10px 0",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:700,border:`2px solid ${nSev===lb?col:C.line}`,background:nSev===lb?bg:C.white,color:nSev===lb?col:C.sub}}>{lb}</span>)}</div></div>
+<div style={S.fld}><span style={S.lbl}>세부 내용</span><textarea value={nDesc} onChange={e=>setNDesc(e.target.value)} placeholder="세부 내용을 입력하세요." style={{...S.inp,height:104,resize:"none"}}/></div>
+<button onClick={save} style={{...S.btn(valid?C.blue:"#CBD5E1"),cursor:valid?"pointer":"not-allowed"}}>💾 저장</button>
+{!valid&&<div style={{fontSize:11,color:C.sub,marginTop:6,textAlign:"center"}}>카테고리와 세부 내용을 입력하면 저장됩니다.</div>}
+</div>}
+<div style={{...S.card,padding:0,overflow:"hidden"}}>
+<div style={{background:C.bg,padding:"12px 14px",fontWeight:800,fontSize:15,textAlign:"center",borderBottom:`1px solid ${C.line}`}}>운영 히스토리</div>
+<div style={{padding:"12px 14px"}}>
+<div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+<span style={{...S.gbtn,fontSize:12}}>전체 날짜 ▾</span>
+<span onClick={()=>setCritOnly(!critOnly)} style={{marginLeft:"auto",cursor:"pointer",fontWeight:700,fontSize:12,padding:"7px 11px",borderRadius:8,
+color:critOnly?C.white:C.red,background:critOnly?C.red:C.redL,border:`1px solid ${critOnly?C.red:"#F5C2C2"}`}}>⚠ 크리티컬</span></div>
+<div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:8}}>
+{fbar.map(c=><span key={c} onClick={()=>setFt(c)} style={{...S.pill(ft===c),whiteSpace:"nowrap",flexShrink:0,fontSize:12,padding:"6px 12px"}}>{c}</span>)}</div>
+{shown.length===0&&<div style={{textAlign:"center",color:C.sub,fontSize:13,padding:"24px 0"}}>해당 조건의 이력이 없습니다.</div>}
+{shown.map((l,i)=>{const lv=HIST_LV[l.lv]||HIST_LV[1];return(
+<div key={i} style={{display:"flex",gap:10,marginBottom:14}}>
+<div style={{width:12,height:12,borderRadius:"50%",background:lv.color,marginTop:4,flexShrink:0}}/>
+<div style={{flex:1,background:lv.bg,border:`1px solid ${lv.color}`,borderRadius:10,padding:"11px 13px"}}>
+<div style={{fontWeight:700,fontSize:13,color:lv.color}}>{l.date} | {l.title}</div>
+<div style={{fontSize:10,fontWeight:700,marginTop:3,color:lv.color}}>{lv.dot} {l.sev} · #{l.type}{l.staff?" · "+l.staff:""}</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4,lineHeight:1.5}}>{l.desc}</div></div></div>);})}
+</div></div>
+</div>
+<Bottom active="history" nav={nav}/></div>);
+}
+// ===== 만족도 설문 =====
+function Survey({nav}){
+const[ans,setAns]=useState({});
+const[word,setWord]=useState("");
+const[err,setErr]=useState("");
+const[done,setDone]=useState(false);
+const submit=()=>{if(Object.keys(ans).length<BIZ_QS.length){setErr("Q1~Q6 문항에 모두 응답해 주세요.");return;}setErr("");setDone(true);};
+if(done){return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>제출 완료</span></div>
+<div style={S.body}>
+<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,textAlign:"center",padding:26}}>
+<div style={{fontSize:34}}>🙏</div>
+<div style={{fontWeight:800,color:C.green,marginTop:10,fontSize:16}}>소중한 의견 감사합니다</div>
+<div style={{fontSize:13,color:C.sub,marginTop:8,lineHeight:1.7}}>보내주신 의견은 더 안정적이고 만족도 높은<br/>서비스를 만드는 데 소중히 활용됩니다.</div></div>
+<button style={S.btn()} onClick={()=>nav("surveymenu")}>확인</button>
+</div></div>);}
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button></div>
+<div style={S.body}>
+<div style={{textAlign:"center",marginBottom:14}}>
+<div style={{fontSize:20,fontWeight:900}}>공간 향기 서비스 경험 설문</div></div>
+<div style={{...S.card,background:C.redL,border:`1px solid #F5C2C2`,textAlign:"center",padding:"11px 14px"}}>
+<div style={{fontSize:12.5,color:C.red,fontWeight:700,lineHeight:1.5}}>🔒 이 설문지는 서비스 담당자가 열람할 수 없도록 설정되어 있습니다.</div></div>
+<div style={{textAlign:"center",margin:"6px 0 6px"}}>
+<div style={{fontSize:15,fontWeight:800,color:C.ink}}>함께 만들어가는 더 나은 공간 경험</div>
+<div style={{fontSize:12.5,color:C.sub,marginTop:10,lineHeight:1.7}}>항상 공간 향기 서비스를 이용해 주셔서 감사합니다.<br/>고객님의 의견은 더욱 안정적이고 만족도 높은 서비스를<br/>제공하기 위한 소중한 자료로 활용됩니다.</div>
+<div style={{fontSize:12,color:C.blue,fontWeight:700,marginTop:6}}>(약 1분 소요)</div></div>
+{BIZ_QS.map((qo,qi)=>(
+<div key={qi} style={{marginBottom:18,marginTop:qi===0?8:0}}>
+<div style={{background:C.bg,borderRadius:10,padding:"12px 14px",fontSize:13.5,fontWeight:700,marginBottom:10,lineHeight:1.5}}>Q{qi+1}. {qo.q}</div>
+{qo.opts.map((o,oi)=>{const sel=ans[qi]===oi+1;return(
+<div key={oi} onClick={()=>setAns(a=>({...a,[qi]:oi+1}))} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 12px",borderRadius:11,border:`1.5px solid ${sel?C.blue:C.line}`,background:sel?C.blueL:C.white,marginBottom:7,cursor:"pointer"}}>
+<span style={{width:23,height:23,borderRadius:"50%",background:sel?C.blue:C.bg,color:sel?"#fff":C.sub,fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{oi+1}</span>
+<span style={{fontSize:13,color:sel?C.ink:C.sub,fontWeight:sel?700:400}}>{o}</span></div>);})}
+</div>))}
+<div style={{marginBottom:18}}>
+<div style={{background:C.bg,borderRadius:10,padding:"12px 14px",fontSize:13.5,fontWeight:700,marginBottom:8,lineHeight:1.5}}>Q7. 공간 향기 서비스가 귀사의 공간에 가져온 가장 큰 가치를 한 문장으로 표현해 주세요.</div>
+<div style={{fontSize:11,color:C.sub,marginBottom:10,lineHeight:1.7}}>자유롭게 작성해 주세요.<br/><br/>예시)<br/>{BIZ_EX.map((e,i)=><span key={i}>· {e}<br/></span>)}</div>
+<textarea value={word} onChange={e=>setWord(e.target.value)} placeholder="한 문장으로 표현해 주세요" style={{...S.inp,height:80,resize:"none"}}/></div>
+{err&&<div style={{color:C.red,fontSize:12,marginBottom:10,textAlign:"center"}}>{err}</div>}
+<button style={S.btn(C.mintD)} onClick={submit}>제출하기</button>
+</div></div>);
+}
+// ===== [신규] 설문 선택 화면 (만족도 / 공간 향기 경험) =====
+function SurveyMenu({nav}){
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>설문 조사</span></div>
+<div style={S.body}>
+<div style={{fontSize:13,color:C.sub,marginBottom:16}}>진행할 설문 유형을 선택해 주세요.</div>
+<div onClick={()=>nav("survey")} style={{...S.card,cursor:"pointer",padding:"20px 18px",display:"flex",alignItems:"center",gap:14}}>
+<span style={{width:52,height:52,borderRadius:15,background:C.blueL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🗣️</span>
+<div style={{flex:1}}><div style={{fontSize:16,fontWeight:800}}>고객 서비스 만족도 설문조사</div>
+<div style={{fontSize:12,color:C.sub,marginTop:3}}>거래처 담당자용 · 서비스 품질 평가</div></div>
+<span style={{color:C.blue,fontSize:20,fontWeight:700}}>›</span></div>
+<div onClick={()=>nav("scentsurvey")} style={{...S.card,cursor:"pointer",padding:"20px 18px",display:"flex",alignItems:"center",gap:14}}>
+<span style={{width:52,height:52,borderRadius:15,background:C.mintL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🌸</span>
+<div style={{flex:1}}><div style={{fontSize:16,fontWeight:800}}>공간 향기 경험 설문조사</div>
+<div style={{fontSize:12,color:C.sub,marginTop:3}}>내방 고객용 · 향기 경험 · 약 1분</div></div>
+<span style={{color:C.blue,fontSize:20,fontWeight:700}}>›</span></div>
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== [신규] 공간 향기 경험 설문 (내방 고객용) =====
+function ScentSurvey({nav}){
+const[ans,setAns]=useState({});
+const[forms,setForms]=useState([]);
+const[word,setWord]=useState("");
+const[reward,setReward]=useState(false);
+const[err,setErr]=useState("");
+const[done,setDone]=useState(false);
+const toggleForm=(f)=>setForms(fs=>fs.includes(f)?fs.filter(x=>x!==f):[...fs,f]);
+const submit=()=>{if(Object.keys(ans).length<SCENT_QS.length){setErr("Q1~Q6 문항에 모두 응답해 주세요.");return;}setErr("");setDone(true);};
+if(done){return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>참여 완료</span></div>
+<div style={S.body}>
+<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,textAlign:"center",padding:26}}>
+<div style={{fontSize:34}}>🌸</div>
+<div style={{fontWeight:800,color:C.green,marginTop:10,fontSize:16}}>설문에 참여해 주셔서 감사합니다</div>
+<div style={{fontSize:13,color:C.sub,marginTop:8,lineHeight:1.7}}>소중한 의견은 더 좋은 향기 경험을<br/>만드는 데 소중히 활용됩니다.</div></div>
+<div style={{...S.card,background:C.yellowL,border:`1px solid #F5E4A8`,textAlign:"center"}}>
+<div style={{fontSize:12,color:"#B4870A",fontWeight:700,lineHeight:1.6}}>🎁 추첨을 통해 소정의 향기 제품을 선물로 드립니다.</div></div>
+<button style={S.btn()} onClick={()=>nav("surveymenu")}>확인</button>
+</div></div>);}
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button></div>
+<div style={S.body}>
+<div style={{textAlign:"center",marginBottom:16}}>
+<div style={{fontSize:20,fontWeight:900}}>공간 향기 경험 설문조사</div>
+<div style={{fontSize:12.5,color:C.sub,marginTop:12,lineHeight:1.7}}>향기는 공간을 기억하게 만드는 중요한 요소입니다.<br/>잠시 시간을 내어 고객님의 경험을 들려주세요.</div>
+<div style={{fontSize:12,color:C.blue,fontWeight:700,marginTop:6}}>(소요시간 약 1분)</div></div>
+<div onClick={()=>setReward(!reward)} style={{...S.card,cursor:"pointer",background:C.yellowL,border:`1px solid #F5E4A8`}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:13,fontWeight:800,color:"#B4870A"}}>🎁 경품 안내</span>
+<span style={{color:"#B4870A",fontSize:12,fontWeight:700}}>{reward?"▲ 접기":"▼ 열기"}</span></div>
+{reward&&<div style={{fontSize:12.5,color:C.ink,marginTop:10,lineHeight:1.6}}>설문에 참여해 주신 분들 중 추첨을 통해 소정의 향기 제품을 선물로 드립니다.</div>}</div>
+{SCENT_QS.map((qo,qi)=>(
+<div key={qi} style={{marginBottom:18,marginTop:qi===0?4:0}}>
+<div style={{background:C.bg,borderRadius:10,padding:"12px 14px",fontSize:13.5,fontWeight:700,marginBottom:10,lineHeight:1.5}}>Q{qi+1}. {qo.q}</div>
+{qo.opts.map((o,oi)=>{const sel=ans[qi]===oi+1;return(
+<div key={oi} onClick={()=>setAns(a=>({...a,[qi]:oi+1}))} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 12px",borderRadius:11,border:`1.5px solid ${sel?C.blue:C.line}`,background:sel?C.blueL:C.white,marginBottom:7,cursor:"pointer"}}>
+<span style={{width:23,height:23,borderRadius:"50%",background:sel?C.blue:C.bg,color:sel?"#fff":C.sub,fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{oi+1}</span>
+<span style={{fontSize:13,color:sel?C.ink:C.sub,fontWeight:sel?700:400}}>{o}</span></div>);})}
+</div>))}
+<div style={{marginBottom:18}}>
+<div style={{background:C.bg,borderRadius:10,padding:"12px 14px",fontSize:13.5,fontWeight:700,marginBottom:10,lineHeight:1.5}}>Q7. 향기를 구매한다면 어떤 형태를 가장 선호하시나요? <span style={{fontSize:11,color:C.sub,fontWeight:600}}>(복수 선택 가능)</span></div>
+{SCENT_FORMS.map(f=>{const sel=forms.includes(f);return(
+<div key={f} onClick={()=>toggleForm(f)} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 12px",borderRadius:11,border:`1.5px solid ${sel?C.blue:C.line}`,background:sel?C.blueL:C.white,marginBottom:7,cursor:"pointer"}}>
+<span style={{width:20,height:20,borderRadius:5,border:sel?"none":"2px solid #CBD5E1",background:sel?C.blue:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{sel&&<span style={{color:"#fff",fontSize:12}}>✓</span>}</span>
+<span style={{fontSize:13,color:sel?C.ink:C.sub,fontWeight:sel?700:400}}>{f}</span></div>);})}
+</div>
+<div style={{marginBottom:18}}>
+<div style={{background:C.bg,borderRadius:10,padding:"12px 14px",fontSize:13.5,fontWeight:700,marginBottom:6,lineHeight:1.5}}>Q8. 이 공간의 향기를 한 단어로 표현해 주세요!</div>
+<div style={{fontSize:11,color:C.sub,marginBottom:10,lineHeight:1.6}}>예: 편안한 / 고급스러운 / 포근한 / 깨끗한 / 세련된 / 싱그러운 / 따뜻한 등 자유롭게 작성해 주세요.</div>
+<input value={word} onChange={e=>setWord(e.target.value)} placeholder="한 단어로 표현해 주세요" style={S.inp}/></div>
+{err&&<div style={{color:C.red,fontSize:12,marginBottom:10,textAlign:"center"}}>{err}</div>}
+<button style={S.btn(C.mintD)} onClick={submit}>제출하기</button>
+</div></div>);
+}
+// ===== 설치 확인서 =====
+function InstallDoc({nav}){
+const[type,setType]=useState("향기 약정");const[lvl,setLvl]=useState(3);const[ok,setOk]=useState(false);
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>설치 확인서 작성</span></div>
+<div style={S.body}>
+<div style={{...S.card,background:C.bg}}>
+<div style={{fontWeight:800,fontSize:13,marginBottom:10}}>고객사 정보 👤</div>
+<Drop label="고객사" ph="고객사명을 입력하세요"/><Field label="담당자" ph="담당자명을 입력하세요"/><Field label="연락처" ph="010-1234-5678"/>
+<Field label="이메일" ph="이메일 주소를 입력하세요"/></div>
+<div style={{...S.card,background:C.bg}}>
+<div style={{fontWeight:800,fontSize:13,marginBottom:10}}>서비스 공급사 정보 🏢</div>
+<Drop label="회사명" ph="회사명을 입력하세요"/><Field label="담당자" ph="담당자명을 입력하세요"/><Field label="연락처" ph="010-1234-5678"/></div>
+<div style={S.sec}>설치 유형</div>
+<div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+{["테스트","렌탈","향기 약정","개인 구매"].map(x=><span key={x} style={S.pill(type===x)} onClick={()=>setType(x)}>{x}</span>)}</div>
+<div style={S.row}><Field label="설치 일자" cal half/><Drop label="향기명" ph="시그니처 우디" options={SCENTS} half/></div>
+<div style={S.sec}>설치 기기</div>
+<div style={{...S.card,background:C.bg}}>
+<div style={S.row}><Drop label="설치 기기(수량)" ph="Scent Pro 200 (2대)" options={DEVICES} half/><Drop label="분사/정지 시간" ph="30초 / 120초" options={["15초 / 60초","30초 / 120초","60초 / 180초","직접 입력"]} half/></div>
+<div style={S.row}><Drop label="총 운영 시간" ph="08:00-20:00" options={["08:00-20:00","09:00-21:00","10:00-22:00","24시간","직접 입력"]} half/><Field label="타겟 공간·설치 위치" icon="📍" half/></div>
+<div><span style={S.lbl}>발향 강도</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{["1 약함","2 보통","3 강함","4 매우 강함","5 최대"].map((x,i)=><span key={x} style={S.pill(lvl===i+1)} onClick={()=>setLvl(i+1)}>{x}</span>)}</div></div></div>
+<div style={S.fld}><span style={S.lbl}>설치 특이 사항</span><div style={{position:"relative"}}><input style={S.inp} placeholder="설치 시 특이 사항이 있다면 입력해 주세요."/><span style={{position:"absolute",right:10,top:11}}>📷</span></div></div>
+<div style={S.fld}><span style={S.lbl}>요청/피드백 사항</span><div style={{position:"relative"}}><input style={S.inp} placeholder="요청 또는 피드백 내용을 입력해 주세요."/><span style={{position:"absolute",right:10,top:11}}>📷</span></div></div>
+<div style={{...S.card,background:C.bg}}>
+<div style={{fontWeight:800,fontSize:13,marginBottom:8}}>설치 관련 안내 및 주의 사항</div>
+<ul style={{fontSize:12,color:C.sub,lineHeight:1.8,paddingLeft:16}}>
+<li>제품은 지정된 시간과 강도로 자동 분사됩니다.</li>
+<li>기기 주변 1m 이내에는 가연성 물질을 두지 마십시오.</li>
+<li>정기 점검 및 소모품 교체를 권장드립니다.</li>
+<li>임의 분해 또는 전원 차단 시 고장의 원인이 될 수 있습니다.</li>
+<li>이상 발생 시 즉시 전원을 끄고 공급사에 연락해 주세요.</li>
+<li>고객 귀책으로 인한 파손/분실은 별도 비용이 청구될 수 있습니다.</li></ul>
+<div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
+<div style={{width:20,height:20,borderRadius:5,border:ok?"none":"2px solid #CBD5E1",background:ok?C.green:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>setOk(!ok)}>{ok&&<span style={{color:"#fff",fontSize:12}}>✓</span>}</div>
+<span style={{fontSize:13}}>상기 내용을 확인했습니다</span></div></div>
+<div style={S.sec}>✍️ 서명</div>
+<SignaturePad label="고객사 담당자가 손으로 서명해 주세요"/>
+<div style={{display:"flex",gap:10,marginTop:8}}><button style={{...S.gbtn,flex:1}}>저장</button><button style={{...S.btn(),flex:1}}>전송</button></div>
+</div></div>);
+}
+// ===== FAQ =====
+function FAQ({nav}){
+const[o,setO]=useState(null);
+const cats=[["상황별 기기 정비",["미스트 미분사","분량 저하","소음 발생","과도한 발열","향료 누유","외관 파손"]],
+["기기 정비/검수",["전원부 정비","펌프 Ass'y 정비","노즐/분사구 정비","메인 보드 정비","타이머 초기화"]],
+["안내 멘트 가이드",["회사 소개 멘트","점검 진행 전 안내","작업 완료 안내","서명 요청","마무리 인사"]]];
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>Trouble Shooting / FAQ</span></div>
+<div style={S.body}>
+<div style={{...S.inp,display:"flex",alignItems:"center",gap:10,marginBottom:14,background:C.bg}}><span>🔍</span><span style={{color:C.sub,fontSize:14}}>항목 검색</span></div>
+{cats.map(([t,items],ci)=>(<div key={t} style={{marginBottom:14}}>
+<div style={S.sec}>{t}</div>
+{items.map((it,ii)=>{const idx=ci*10+ii;return(
+<div key={it} style={{...S.card,marginBottom:6,cursor:"pointer",borderLeft:o===idx?`3px solid ${C.blue}`:"3px solid transparent"}} onClick={()=>setO(o===idx?null:idx)}>
+<div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600,fontSize:13}}>{it}</span><span style={{color:C.sub}}>{o===idx?"▲":"▼"}</span></div>
+{o===idx&&<div style={{marginTop:8,fontSize:12,color:C.sub,lineHeight:1.6}}>해당 항목 상세 점검 절차 및 조치 안내가 표시됩니다.</div>}</div>);})}</div>))}
+</div></div>);
+}
+// ===== [신규] 개인정보 관리 =====
+function Profile({nav}){
+const st0=STAFF.find(s=>s.name===SESSION.name)||STAFF[0];
+const[photo,setPhoto]=useState(null);
+const[name,setName]=useState(SESSION.name||"");
+const[dept,setDept]=useState("서비스관리팀");
+const DEPTS=["대표 이사","상무","경영지원팀","영업 1팀","영업 2팀","영업 3팀","서비스관리팀","SCM","조향팀","상품기획팀"];
+const[phone,setPhone]=useState((st0.phone&&st0.phone.startsWith("010-"))?st0.phone:"010-");
+const[email,setEmail]=useState((SESSION.name||"user").toLowerCase()+"@fgint.co.kr");
+const[cur,setCur]=useState("");const[pw,setPw]=useState("");const[pw2,setPw2]=useState("");
+const[saved,setSaved]=useState(false);
+const up=(f)=>{if(!f)return;const r=new FileReader();r.onload=()=>setPhoto(r.result);r.readAsDataURL(f);};
+const pwErr=pw&&pw2&&pw!==pw2;
+const pwOk=cur&&pw&&pw2&&pw===pw2;
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>개인정보 관리</span></div>
+<div style={S.body}>
+<div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:18}}>
+<div style={{position:"relative",width:96,height:96}}>
+<div style={{width:96,height:96,borderRadius:"50%",background:photo?"#fff":C.grad,backgroundImage:photo?`url(${photo})`:C.grad,backgroundSize:"cover",backgroundPosition:"center",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:36,fontWeight:900,boxShadow:"0 8px 20px rgba(18,184,169,0.30)",border:"3px solid #fff"}}>{!photo&&(name||"U").slice(0,1)}</div>
+<label style={{position:"absolute",right:-2,bottom:-2,width:32,height:32,borderRadius:"50%",background:C.blue,border:"2.5px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#fff",cursor:"pointer",boxShadow:"0 3px 8px rgba(18,180,166,0.5)"}}>📷<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>up(e.target.files&&e.target.files[0])}/></label></div>
+<div style={{fontSize:16,fontWeight:800,marginTop:12}}>{name||"이름"}</div>
+<div style={{fontSize:12,color:C.sub,marginTop:2}}>{st0.id} · FG International</div></div>
+<div style={S.sec}>👤 기본 정보</div>
+<div style={S.card}>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>이름</span><input value={name} onChange={e=>setName(e.target.value)} style={S.inp}/></div>
+<div style={{flex:1}}><span style={S.lbl}>부서명</span>
+<div style={{position:"relative"}}><select value={dept} onChange={e=>setDept(e.target.value)} style={{...S.inp,cursor:"pointer",fontFamily:"inherit",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",paddingRight:28}}>{DEPTS.map(d=><option key={d} value={d}>{d}</option>)}</select><DArrow/></div></div></div>
+<div style={S.fld}><span style={S.lbl}>전화번호</span><input value={phone} onChange={e=>{const v=e.target.value;setPhone(v.startsWith("010-")?v:"010-");}} type="tel" inputMode="tel" style={S.inp}/></div>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>이메일</span><input value={email} onChange={e=>setEmail(e.target.value)} type="email" style={S.inp}/></div></div>
+<div style={S.sec}>🔒 비밀번호 변경</div>
+<div style={S.card}>
+<div style={S.fld}><span style={S.lbl}>현재 비밀번호</span><input value={cur} onChange={e=>setCur(e.target.value)} type="password" placeholder="현재 비밀번호" style={S.inp}/></div>
+<div style={S.fld}><span style={S.lbl}>새 비밀번호</span><input value={pw} onChange={e=>setPw(e.target.value)} type="password" placeholder="새 비밀번호" style={S.inp}/></div>
+<div style={{...S.fld,marginBottom:0}}><span style={S.lbl}>새 비밀번호 확인</span><input value={pw2} onChange={e=>setPw2(e.target.value)} type="password" placeholder="새 비밀번호 확인" style={{...S.inp,borderColor:pwErr?C.red:C.line}}/>
+{pwErr&&<div style={{fontSize:11,color:C.red,marginTop:5}}>새 비밀번호가 일치하지 않습니다.</div>}
+{pwOk&&<div style={{fontSize:11,color:C.mintD,marginTop:5}}>새 비밀번호가 일치합니다.</div>}</div></div>
+<button onClick={()=>{setSaved(true);setCur("");setPw("");setPw2("");}} style={{...S.btn(C.blue),marginTop:14}}>💾 변경 사항 저장</button>
+{saved&&<div style={{...S.card,background:C.blueL,border:`1px solid #BFD7FE`,textAlign:"center",padding:16,marginTop:10}}>
+<div style={{fontSize:22}}>✅</div><div style={{fontWeight:800,color:C.blue,marginTop:4}}>저장 완료</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>개인정보가 업데이트되었습니다.</div></div>}
+<div style={{fontSize:11,color:C.sub,marginTop:14,lineHeight:1.6}}>※ 데모 화면입니다. 실제로는 서버에 안전하게 저장되며, 비밀번호는 암호화되어 관리됩니다.</div>
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== [신규] 향료 출고량 산정 =====
+function Ship({nav}){
+const[q,setQ]=useState("");
+const scents=[];SHIP_DB.forEach(r=>{if(scents.indexOf(r.scent)<0)scents.push(r.scent);});
+const shown=q.trim()?scents.filter(s=>s.toLowerCase().includes(q.trim().toLowerCase())):scents;
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>향료 출고량 산정</span></div>
+<div style={S.body}>
+<div style={{display:"flex",alignItems:"center",gap:10,background:C.white,padding:"11px 14px",borderRadius:14,border:`1px solid ${C.line}`,boxShadow:"0 4px 14px rgba(18,48,44,0.06)",marginBottom:12}}>
+<span style={{fontSize:15}}>🔍</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="향기명을 검색하세요." style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}}/></div>
+<div style={{background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:12,padding:"11px 14px",marginBottom:14,fontSize:11.5,color:C.sub,lineHeight:1.6}}>향료 운영 데이터에서 저장한 <b style={{color:C.blueD}}>기기별 초당 소비량(ml/s)</b>을 향기별로 모았습니다. <b style={{color:C.blueD}}>월 예상 계산</b> 버튼을 누르면 별도 계산 페이지로 이동합니다.</div>
+{scents.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>아직 저장된 소비량 데이터가 없습니다.<br/>향료 운영 데이터에서 「저장」을 누르면 여기에 표시됩니다.</div>
+:shown.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>'{q}' 검색 결과가 없습니다.</div>
+:shown.map(sc=>(<div key={sc} style={{...S.card,padding:0,overflow:"hidden"}}>
+<div style={{background:C.mintL,padding:"10px 14px",fontWeight:800,fontSize:14,color:C.mintD,display:"flex",alignItems:"center",gap:6}}>🧴 {sc}</div>
+<div style={{padding:"4px 14px 10px"}}>
+{SHIP_DB.filter(r=>r.scent===sc).map((r,i)=>(
+<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"10px 0",borderBottom:i<SHIP_DB.filter(x=>x.scent===sc).length-1?`1px solid ${C.line}`:"none"}}>
+<div style={{minWidth:0,flex:1}}><div style={{fontSize:13,fontWeight:700}}>{r.device}</div><div style={{fontSize:11,color:C.sub,marginTop:2}}>초당 소모량 <b style={{color:C.mintD}}>{(Math.round(r.perSec*10000)/10000)} ml/s</b></div></div>
+<span onClick={()=>nav("shipcalc",{scent:sc,device:r.device,perSec:r.perSec})} style={{flexShrink:0,fontSize:11,fontWeight:800,color:"#fff",background:C.blue,borderRadius:9,padding:"7px 11px",cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 8px rgba(18,180,166,0.35)"}}>월 예상 계산 ›</span>
+</div>))}</div></div>))}
+</div>
+<Bottom active="consume" nav={nav}/></div>);
+}
+// ===== [신규] 월 예상 소비량 계산 (별도 페이지) =====
+function ShipCalc({nav,params}){
+const pr=params||{};
+const[ps,setPs]=useState(pr.perSec!=null?String(Math.round(pr.perSec*10000)/10000):"");
+const[h,setH]=useState("");const[days,setDays]=useState("");
+const[spray,setSpray]=useState("");const[stop,setStop]=useState("");
+const num=(v)=>{const n=parseFloat(v);return isNaN(n)?null:n;};
+const P=num(ps),H=num(h),D=num(days),SP=num(spray),ST=num(stop);
+const duty=(SP!=null&&ST!=null&&(SP+ST)>0)?SP/(SP+ST):1;
+const est=(P!=null&&H!=null&&D!=null)?P*H*3600*duty*D:null;
+const ci={...S.inp,background:C.white};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>월 예상 계산</span></div>
+<div style={S.body}>
+<div style={{...S.card,background:C.mintL,border:`1px solid ${C.mint}`,display:"flex",alignItems:"center",gap:12}}>
+<span style={{width:42,height:42,borderRadius:12,background:C.white,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🧴</span>
+<div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:800,color:C.mintD}}>{pr.scent||"향기 미지정"}</div>
+<div style={{fontSize:11,color:C.sub,marginTop:2}}>{pr.device||"기기 미지정"}</div></div></div>
+<div style={{fontSize:11.5,color:C.sub,lineHeight:1.6,margin:"2px 2px 12px"}}>향료 출고량 산정에서 넘어온 <b style={{color:C.mintD}}>초당 소비량</b>을 기준으로, 가동 조건을 입력하면 월 예상 소비량이 자동 계산됩니다.</div>
+<div style={S.card}>
+<div style={S.fld}><span style={S.lbl}>초당 소비량 (ml/s)</span><input value={ps} onChange={e=>setPs(e.target.value)} type="text" inputMode="decimal" style={ci} placeholder="예: 0.0025"/></div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>일일 가동 시간(h)</span><input value={h} onChange={e=>setH(e.target.value)} type="text" inputMode="decimal" style={ci} placeholder="예: 10"/></div>
+<div style={{flex:1}}><span style={S.lbl}>월 가동 일수</span><input value={days} onChange={e=>setDays(e.target.value)} type="text" inputMode="decimal" style={ci} placeholder="예: 26"/></div></div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>분사 시간(초)</span><input value={spray} onChange={e=>setSpray(e.target.value)} type="text" inputMode="decimal" style={ci} placeholder="선택"/></div>
+<div style={{flex:1}}><span style={S.lbl}>정지 시간(초)</span><input value={stop} onChange={e=>setStop(e.target.value)} type="text" inputMode="decimal" style={ci} placeholder="선택"/></div></div>
+<div style={{fontSize:10,color:C.sub,marginTop:2}}>※ 분사·정지를 입력하면 가동률(분사÷(분사+정지))이 반영됩니다. 미입력 시 100%로 계산됩니다.</div>
+</div>
+<div style={{width:"100%",boxSizing:"border-box",background:est!=null?C.mintD:C.white,borderRadius:12,padding:"16px 18px",marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${C.mint}`}}>
+<span style={{fontSize:13,color:est!=null?"#fff":C.mintD,fontWeight:800}}>월 예상 소비량</span>
+<span style={{fontSize:20,fontWeight:900,color:est!=null?"#fff":C.mintD}}>{est!=null?(Math.round(est*100)/100).toLocaleString()+" ml":"–"}</span></div>
+{est==null&&<div style={{fontSize:10.5,color:C.orange,marginTop:8,lineHeight:1.5}}>※ 초당 소비량 · 일일 가동 시간 · 월 가동 일수를 입력하면 자동 계산됩니다.</div>}
+<div style={{fontSize:10.5,color:C.sub,marginTop:10,lineHeight:1.7}}>※ 월 예상 소비량 = 초당 소비량 × 일일 가동 시간 × 3600 × 분사÷(분사+정지) × 월 가동 일수</div>
+</div>
+<Bottom active="consume" nav={nav}/></div>);
+}
+// ===== [신규] 서비스 방문일지 (일반 · 고객용) =====
+function VisitGen({nav,params}){
+const p=params&&params.p?params.p:"";
+const d=(INSTALL_DATA[p]&&INSTALL_DATA[p].f)||{};
+const inst=INSTALL_DATA[p]||{};
+const devRows=(inst.devRows&&inst.devRows.length)?inst.devRows:[];
+const checks=CUST_EXTRACT[p]||CUST_EXTRACT[p||"미지정"]||[];
+const snap=VISIT_SNAP[p]||VISIT_SNAP[p||"미지정"]||{};
+const[fb,setFb]=useState(["","","",""]);
+const[sent,setSent]=useState(false);
+const[custOpen,setCustOpen]=useState(false);
+const[scentPop,setScentPop]=useState(false);
+const setF=(i,v)=>setFb(a=>a.map((x,j)=>j===i?v:x));
+const email=d.mgrEmail||"";
+const send=()=>{SAVED_VISITS[p||"미지정"]={...(SAVED_VISITS[p||"미지정"]||{}),general:true,date:snap.visitDate||""};setSent(true);};
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>서비스 방문일지(일반)</span></div>
+<div style={S.body}>
+<div style={{background:C.blueL,border:`1px solid ${C.mint}`,borderRadius:12,padding:"11px 14px",marginBottom:12,fontSize:11.5,color:C.sub,lineHeight:1.6}}>서비스 방문일지(내부)에서 추출된 <b style={{color:C.blueD}}>고객 제공용</b> 방문일지입니다.</div>
+<div style={{...S.sec,justifyContent:"space-between"}}>
+<span>🏢 고객사 / 사업장</span>
+<span onClick={()=>setCustOpen(v=>!v)} style={{fontSize:11,color:C.blue,fontWeight:700,cursor:"pointer"}}>{custOpen?"▲ 접기":"▼ 열기"}</span></div>
+<div style={S.card}>
+<div style={{...S.fld,marginBottom:custOpen?12:0}}><span style={S.lbl}>고객사명</span><input readOnly value={d.cust||p||""} style={{...S.inp,background:C.bg}}/></div>
+{custOpen&&<React.Fragment>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>고객사 담당자</span><input readOnly value={d.mgr||""} style={{...S.inp,background:C.bg}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>소속 부서</span><input readOnly value={d.dept||""} style={{...S.inp,background:C.bg}}/></div></div>
+<div style={{...S.row,marginBottom:0}}>
+<div style={{flex:1}}><span style={S.lbl}>이메일</span><input readOnly value={d.mgrEmail||""} style={{...S.inp,background:C.bg}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>연락처</span><input readOnly value={d.mgrPhone||""} style={{...S.inp,background:C.bg}}/></div></div></React.Fragment>}</div>
+<div style={S.sec}>📅 방문 일자</div>
+<div style={S.fld}><span style={S.lbl}>방문 일시</span><input readOnly value={snap.visitDate||""} style={{...S.inp,background:C.bg}}/></div>
+<div style={S.sec}>👤 서비스 담당자</div>
+<div style={{fontSize:11,color:C.sub,marginBottom:6}}>서비스 방문일지(내부)에서 자동 연동됩니다.</div>
+<div style={S.row}>
+<div style={{flex:1}}><span style={S.lbl}>이름</span><input readOnly value={snap.svcStaff||""} style={{...S.inp,background:C.bg}}/></div>
+<div style={{flex:1}}><span style={S.lbl}>연락처 (자동)</span><input readOnly value={snap.svcPhone||""} style={{...S.inp,background:C.blueL,color:C.ink}}/></div></div>
+<div style={S.sec}>🚩 방문 목적</div>
+<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+{["정기 점검","A/S","기타"].map(x=><span key={x} style={{...S.pill((snap.purpose||"정기 점검")===x),cursor:"default"}}>{x}</span>)}</div>
+<div style={S.sec}>🧴 향기명</div>
+<div style={{position:"relative",marginBottom:8}}><input style={{...S.inp,paddingRight:46,background:C.bg}} readOnly value={d.scent||""}/>
+<span onClick={()=>setScentPop(v=>!v)} title="향기 정보 기록표" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:13,background:"linear-gradient(180deg,#FFFFFF 0%,#E8F6F3 100%)",color:C.mintD,border:`1px solid ${C.mint}`,borderRadius:8,padding:"3px 7px",boxShadow:"0 2px 6px rgba(18,184,169,0.25)"}}>📖</span>
+{scentPop&&<AnchoredBox title="향기 정보 기록표" onClose={()=>setScentPop(false)} w="300px" anchor="right">
+<div style={{fontSize:12.5,lineHeight:1.9}}>
+<div><b>향기명</b> : {d.scent||"-"}</div>
+<div><b>노트</b> : {d.scentNote||"-"}</div>
+<div><b>향기 설명</b> : {d.scentDesc||"-"}</div></div>
+<div style={{fontSize:11,color:C.sub,marginTop:8}}>※ 설치 현황에 기록된 향기 정보가 연동됩니다.</div></AnchoredBox>}</div>
+<div style={S.sec}>📍 Scent Mapping <span style={{fontSize:11,fontWeight:600,color:C.sub}}>(내부 도면 연동 · 보기 전용)</span></div>
+<ScentMaps company={p||"미지정"} readOnly/>
+<div style={S.sec}>🔧 설치 장비</div>
+<div style={S.card}>
+{devRows.length===0?<div style={{fontSize:12,color:C.sub,textAlign:"center",padding:"6px 0"}}>설치 현황에 등록된 기기 정보가 없습니다.</div>
+:devRows.map((id,i)=>(<div key={id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<devRows.length-1?`1px solid ${C.line}`:"none"}}>
+<span style={{fontSize:13,fontWeight:700}}>{d["dev"+id]||"장비 "+(i+1)}</span>
+<span style={{fontSize:12,color:C.sub}}>수량 <b style={{color:C.ink}}>{d["qty"+id]||"-"}</b></span></div>))}
+<div style={{fontSize:10,color:C.sub,marginTop:8}}>※ 설치 현황의 향기/기기 정보와 연동됩니다.</div></div>
+<div style={S.sec}>📋 점검 내역</div>
+<div style={S.card}>
+{checks.length===0?<div style={{fontSize:12,color:C.sub,textAlign:"center",padding:"6px 0"}}>고객용으로 체크된 점검 내역이 없습니다.</div>
+:checks.map((c,i)=>(<div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 0",borderBottom:i<checks.length-1?`1px solid ${C.line}`:"none"}}>
+<span style={{color:C.mintD,fontSize:13,marginTop:1}}>✓</span><span style={{fontSize:13,lineHeight:1.5}}>{c.text}</span></div>))}</div>
+<div style={S.sec}>💬 고객사 피드백</div>
+<div style={{...S.card,padding:"16px 14px"}}>
+{fb.map((v,i)=><input key={i} value={v} onChange={e=>setF(i,e.target.value)} placeholder="고객사 피드백을 입력하세요." style={{width:"100%",boxSizing:"border-box",border:"none",borderBottom:`1px dashed ${C.sub}`,outline:"none",fontSize:14,padding:"8px 2px",marginBottom:14,background:"transparent",color:C.ink}}/>)}</div>
+<div style={S.sec}>✍️ 고객사 담당자 서명</div>
+<SignaturePad label="고객사 담당자가 손으로 서명해 주세요"/>
+<button onClick={send} style={{...S.btn(C.blue),marginTop:18,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>💾 저장 및 전송</button>
+{sent&&<div style={{...S.card,background:C.greenL,border:`1px solid ${C.green}`,textAlign:"center",padding:16,marginTop:10}}>
+<div style={{fontSize:22}}>📧</div>
+<div style={{fontWeight:800,color:C.green,marginTop:4}}>저장 및 전송 완료</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4}}>{email?"고객용 방문일지를 저장하고 "+email+" 로 전송했습니다.":"저장 완료. 고객사 담당자 이메일이 등록되어 있지 않습니다. (설치 현황에서 등록)"}</div></div>}
+</div>
+<Bottom active="log" nav={nav}/></div>);
+}
+// ===== [신규] 고객사 히스토리 · 업체 검색 =====
+function VisitHist({nav}){
+const[q,setQ]=useState("");
+const[sel,setSel]=useState("");
+const compSet={};
+PARTNERS.forEach(c=>{compSet[c]=1;});
+Object.keys(SAVED_VISITS).forEach(c=>{compSet[c]=1;});
+Object.keys(INSTALL_DATA).forEach(c=>{compSet[c]=1;});
+OP_HISTORY.forEach(e=>{if(e.company)compSet[e.company]=1;});
+const comps=Object.keys(compSet).filter(c=>c&&c!=="미지정").sort((a,b)=>a.localeCompare(b,"ko"));
+const list=q.trim()?comps.filter(c=>c.includes(q.trim())):comps;
+const hist=sel?OP_HISTORY.filter(e=>e.company===sel).map(e=>({date:e.date,title:e.cat,desc:e.text,type:e.cat,lv:e.lv,sev:e.sev,staff:e.staff})):[];
+const sv=sel?(SAVED_VISITS[sel]||null):null;
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>고객사 히스토리</span></div>
+<div style={S.body}>
+{!sel?<React.Fragment>
+<div style={{display:"flex",alignItems:"center",gap:10,background:C.white,padding:"11px 14px",borderRadius:14,border:`1px solid ${C.line}`,boxShadow:"0 4px 14px rgba(18,48,44,0.06)",marginBottom:12}}>
+<span style={{fontSize:15}}>🔍</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="업체명을 검색하세요." style={{border:"none",outline:"none",background:"none",flex:1,fontSize:14}}/></div>
+<div style={{fontSize:12,fontWeight:800,color:C.sub,margin:"0 2px 8px"}}>고객사 선택 <span style={{color:C.blue}}>({list.length})</span></div>
+{comps.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>등록된 고객사가 없습니다.</div>
+:list.length===0?<div style={{...S.card,textAlign:"center",color:C.sub,fontSize:13,padding:22}}>'{q}' 검색 결과가 없습니다.</div>
+:list.map(c=>{const v=SAVED_VISITS[c];const hc=OP_HISTORY.filter(e=>e.company===c).length;return(
+<div key={c} onClick={()=>{setSel(c);setQ("");}} style={{...S.card,display:"flex",alignItems:"center",gap:12,cursor:"pointer",padding:"14px 15px"}}>
+<span style={{width:40,height:40,borderRadius:12,background:C.blueL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,flexShrink:0}}>🏢</span>
+<div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:800}}>{c}</div>
+<div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+<span style={{fontSize:10,fontWeight:800,color:C.orange,background:C.yellowL,borderRadius:6,padding:"2px 7px"}}>히스토리 {hc}</span>
+{v&&v.internal&&<span style={{fontSize:10,fontWeight:800,color:C.mintD,background:C.mintL,borderRadius:6,padding:"2px 7px"}}>내부</span>}
+{v&&v.general&&<span style={{fontSize:10,fontWeight:800,color:C.blueD,background:C.blueL,borderRadius:6,padding:"2px 7px"}}>일반</span>}</div></div>
+<span style={{color:C.sub,fontSize:18}}>›</span></div>);})}
+</React.Fragment>:<React.Fragment>
+<div onClick={()=>setSel("")} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800,color:C.blue,cursor:"pointer",marginBottom:12}}>‹ 다른 고객사 선택</div>
+<div style={{...S.card,display:"flex",alignItems:"center",gap:12,padding:"14px 15px",marginBottom:14}}>
+<span style={{width:44,height:44,borderRadius:13,background:C.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21,flexShrink:0}}>🏢</span>
+<div style={{flex:1,minWidth:0}}><div style={{fontSize:17,fontWeight:900}}>{sel}</div>
+<div style={{fontSize:11,color:C.sub,marginTop:2}}>운영 히스토리 {hist.length}건</div></div></div>
+{sv&&<div onClick={()=>nav("visitcat",{p:sel})} style={{...S.card,display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"12px 14px",marginBottom:14,background:C.blueL,border:`1px solid ${C.mint}`}}>
+<span style={{fontSize:18}}>📂</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:800,color:C.blueD}}>저장된 서방지 보기</div>
+<div style={{display:"flex",gap:5,marginTop:4}}>{sv.internal&&<span style={{fontSize:10,fontWeight:800,color:C.mintD,background:C.mintL,borderRadius:6,padding:"2px 7px"}}>내부</span>}{sv.general&&<span style={{fontSize:10,fontWeight:800,color:C.blueD,background:C.white,borderRadius:6,padding:"2px 7px"}}>일반</span>}</div></div>
+<span style={{color:C.blue,fontSize:18}}>›</span></div>}
+<div style={{...S.card,padding:0,overflow:"hidden"}}>
+<div style={{background:C.bg,padding:"12px 14px",fontWeight:800,fontSize:15,textAlign:"center",borderBottom:`1px solid ${C.line}`}}>운영 히스토리</div>
+<div style={{padding:"14px"}}>
+{hist.length===0?<div style={{textAlign:"center",color:C.sub,fontSize:13,padding:"20px 0"}}>이 고객사의 저장된 히스토리가 없습니다.<br/>서비스 방문일지(내부)·히스토리 작성에서 저장하면 표시됩니다.</div>
+:hist.map((l,i)=>{const lv=HIST_LV[l.lv]||HIST_LV[1];return(
+<div key={i} style={{display:"flex",gap:10,marginBottom:14}}>
+<div style={{width:12,height:12,borderRadius:"50%",background:lv.color,marginTop:4,flexShrink:0}}/>
+<div style={{flex:1,background:lv.bg,border:`1px solid ${lv.color}`,borderRadius:10,padding:"11px 13px"}}>
+<div style={{fontWeight:700,fontSize:13,color:lv.color}}>{l.date} | {l.title}</div>
+<div style={{fontSize:10,fontWeight:700,marginTop:3,color:lv.color}}>{lv.dot} {l.sev} · #{l.type}{l.staff?" · "+l.staff:""}</div>
+<div style={{fontSize:12,color:C.sub,marginTop:4,lineHeight:1.5}}>{l.desc}</div></div></div>);})}
+</div></div>
+</React.Fragment>}
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+// ===== [신규] 서방지 카테고리 (내부 / 일반) =====
+function VisitCat({nav,params}){
+const p=params&&params.p?params.p:"";
+const v=SAVED_VISITS[p]||{};
+const card=(icon,title,sub,grad,sh,active,onClick)=>(
+<div onClick={active?onClick:undefined} style={{position:"relative",overflow:"hidden",background:active?grad:"#EDEFF1",borderRadius:20,padding:"20px 18px",marginBottom:14,cursor:active?"pointer":"default",opacity:active?1:0.55,display:"flex",alignItems:"center",gap:14,boxShadow:active?`0 12px 26px ${sh}`:"none"}}>
+<div style={{width:48,height:48,borderRadius:14,background:"rgba(255,255,255,0.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{icon}</div>
+<div style={{flex:1}}><div style={{fontSize:17,fontWeight:800,color:active?"#fff":C.sub}}>{title}</div><div style={{fontSize:11.5,fontWeight:600,color:active?"rgba(255,255,255,0.9)":C.sub,marginTop:3}}>{active?sub:"저장된 기록 없음"}</div></div>
+{active&&<span style={{fontSize:22,fontWeight:700,color:"rgba(255,255,255,0.92)"}}>›</span>}</div>);
+return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+<div style={S.top}><button style={S.back} onClick={()=>NAVREF.back()}>‹</button><span style={S.h1}>서방지 · {p}</span></div>
+<div style={S.body}>
+<div style={{fontSize:13,color:C.sub,marginBottom:16}}><span style={{color:C.sub}}>업체명 </span><b style={{color:C.ink,fontSize:15}}>{p}</b> · 저장된 서방지</div>
+{card("📝","서비스 방문일지(내부)","점검·내부 코멘트 · 상세 기록","linear-gradient(135deg,#14BBAC 0%,#0E9488 100%)","rgba(18,180,166,0.32)",v.internal,()=>nav("visit",{p}))}
+{card("📄","서비스 방문일지(일반)","고객 제공용 · 추출본","linear-gradient(135deg,#4A82F0 0%,#2451C7 100%)","rgba(46,111,224,0.32)",v.general,()=>nav("visitgen",{p}))}
+</div>
+<Bottom active="home" nav={nav}/></div>);
+}
+const Bottom=({active,nav})=>(<div style={S.bnav}>
+{[["home","🏠","홈"],["log","📒","서비스 로그"],["history","🕘","히스토리"],["consume","🧴","향료"],["faq","🛠️","FAQ"]].map(([k,i,l])=>{const a=active===k;return(
+<button key={k} onClick={()=>nav(k)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",flex:1,padding:0}}>
+<span style={{width:46,height:30,borderRadius:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,background:a?C.blueL:"transparent",boxShadow:a?"inset 0 0 0 1px rgba(18,180,166,0.35)":"none"}}>{i}</span>
+<span style={{fontSize:9.5,fontWeight:a?800:600,color:a?C.blueD:C.sub,whiteSpace:"nowrap",letterSpacing:"-0.2px"}}>{l}</span></button>);})}</div>);
+function App(){
+const[unlock,setUnlock]=useState(false);
+const[scr,setScr]=useState("signin");
+const[params,setParams]=useState({});
+const[hist,setHist]=useState([]);
+const[inspections,setInspections]=useState([]);
+const[surveys,setSurveys]=useState([]);
+const store={inspections,surveys,addInspection:(item)=>setInspections(l=>[item,...l]),addSurvey:(item)=>setSurveys(l=>[item,...l])};
+const nav=(to,p={})=>{setHist(h=>[...h,{scr,params}]);setScr(to);setParams(p||{});window.scrollTo&&window.scrollTo(0,0);};
+const back=()=>{
+if(hist.length===0){setUnlock(false);return;} // 로그인 화면에서 뒤로 → 접근 코드 화면
+const prev=hist[hist.length-1];
+setHist(h=>h.slice(0,-1));setScr(prev.scr);setParams(prev.params||{});
+window.scrollTo&&window.scrollTo(0,0);
+};
+NAVREF.back=back;
+const screens={
+signin:<SignIn nav={nav}/>,home:<Home nav={nav} store={store}/>,today:<Today nav={nav}/>,log:<Log nav={nav}/>,logmenu:<LogMenu nav={nav} params={params}/>,
+install:<Install nav={nav} params={params}/>,visit:<Visit nav={nav} params={params} store={store}/>,customer:<Customer nav={nav} params={params}/>,
+consume:<Consume nav={nav}/>,history:<History nav={nav}/>,survey:<Survey nav={nav} store={store}/>,surveymenu:<SurveyMenu nav={nav}/>,scentsurvey:<ScentSurvey nav={nav}/>,installdoc:<InstallDoc nav={nav}/>,seriallist:<SerialList nav={nav}/>,faq:<FAQ nav={nav}/>,profile:<Profile nav={nav}/>,ship:<Ship nav={nav}/>,shipcalc:<ShipCalc nav={nav} params={params}/>,visitgen:<VisitGen nav={nav} params={params}/>,visithist:<VisitHist nav={nav}/>,visitcat:<VisitCat nav={nav} params={params}/>,
+};
+return(<div style={S.app}><div style={S.phone}>{!unlock?<Gate onOk={()=>setUnlock(true)}/>:(screens[scr]||screens.home)}</div></div>);
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
